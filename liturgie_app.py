@@ -688,7 +688,7 @@ def xlsx_bytes(rows, state, title="Programme liturgique"):
     ws.set_landscape()
     ws.set_paper(9)  # A4
     ws.fit_to_pages(1, 1)
-    ws.set_print_area(0, 0, last_row, len(fields) - 1)
+    ws.print_area(0, 0, last_row, len(fields) - 1)
     ws.set_margins(0.18, 0.18, 0.28, 0.28)
     ws.center_horizontally()
     ws.center_vertically()
