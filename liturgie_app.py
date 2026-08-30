@@ -22,7 +22,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.30-persistant-supabase-v3.7.1-roles-presences-auth-fix"
+APP_VERSION = "2026.08.30-persistant-supabase-v3.7.2-presences-reset"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
@@ -116,6 +116,7 @@ def initial_state():
         "next_first_language": "FR",
         "history": [],
         "attendance": {},
+        "attendance_ignored": [],
         "audit_log": [],
     }
 
@@ -165,6 +166,7 @@ def normalize_state(raw):
         "next_first_language": "FR",
         "history": [],
         "attendance": {},
+        "attendance_ignored": [],
         "audit_log": [],
     }
 
@@ -189,7 +191,7 @@ def normalize_state(raw):
             requested = highest + 1
         state["next_member_number"][lang] = max(highest + 1, requested)
 
-    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "audit_log"]:
+    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "attendance_ignored", "audit_log"]:
         if key in raw:
             state[key] = deepcopy(raw[key])
 
@@ -421,6 +423,44 @@ def save_attendance_sheet(state, saturday, statuses, actor_role, reason=""):
         "changes": changes,
     })
     return True, "Feuille de présence enregistrée."
+
+
+def attendance_is_ignored(state, saturday):
+    return saturday.isoformat() in set(state.get("attendance_ignored", []) or [])
+
+
+def delete_attendance_sheet(state, saturday, actor_role, reason="Remise à zéro"): 
+    key = attendance_sheet_key(saturday)
+    removed = state.setdefault("attendance", {}).pop(key, None)
+    ignored = state.setdefault("attendance_ignored", [])
+    if key not in ignored:
+        ignored.append(key)
+    stamp = now_ouaga().isoformat()
+    state.setdefault("audit_log", []).append({
+        "type": "attendance_delete",
+        "date": key,
+        "timestamp": stamp,
+        "actor": attendance_actor_label(actor_role),
+        "reason": str(reason).strip() or "Remise à zéro",
+        "had_sheet": bool(removed),
+    })
+    return True, f"Feuille du {saturday.strftime('%d/%m/%Y')} supprimée. Les présences sont remises à zéro pour cette date."
+
+
+def restore_attendance_sheet(state, saturday, actor_role):
+    key = attendance_sheet_key(saturday)
+    state["attendance_ignored"] = [k for k in (state.get("attendance_ignored", []) or []) if k != key]
+    sheet, _ = ensure_attendance_sheet(state, saturday, actor=attendance_actor_label(actor_role))
+    stamp = now_ouaga().isoformat()
+    state.setdefault("audit_log", []).append({
+        "type": "attendance_restore",
+        "date": key,
+        "timestamp": stamp,
+        "actor": attendance_actor_label(actor_role),
+        "reason": "Réactivation manuelle de la feuille",
+        "changes": {},
+    })
+    return sheet
 
 
 def attendance_eligibility(state, target_year, target_month):
@@ -1182,6 +1222,7 @@ def rotation_reset_keep_names(state):
     fresh["active"] = {c: bool(state.get("active", {}).get(c, True)) for c in member_codes(state)}
     fresh["people"] = {c: blank_person() for c in member_codes(state)}
     fresh["attendance"] = deepcopy(state.get("attendance", {}))
+    fresh["attendance_ignored"] = deepcopy(state.get("attendance_ignored", []))
     fresh["audit_log"] = deepcopy(state.get("audit_log", []))
     return fresh
 
@@ -1462,7 +1503,7 @@ CAN_EDIT_ATTENDANCE = staff_mode()
 _now = now_ouaga()
 _current_saturday = latest_saturday(_now.date())
 _current_attendance_open = attendance_is_open(_current_saturday, _now)
-if CAN_EDIT_ATTENDANCE and _current_attendance_open:
+if CAN_EDIT_ATTENDANCE and _current_attendance_open and not attendance_is_ignored(state, _current_saturday):
     _sheet, _created = ensure_attendance_sheet(state, _current_saturday, actor=attendance_actor_label(current_role()))
     if _created:
         st.session_state.liturgie_state = state
@@ -1478,7 +1519,7 @@ else:
     st.info("👁️ Consultation uniquement — aucune modification n'est autorisée sur cet appareil.")
 st.write("Programmation automatique — les codes techniques restent en arrière-plan, seuls les noms sont affichés.")
 
-if CAN_EDIT_ATTENDANCE and _current_attendance_open:
+if CAN_EDIT_ATTENDANCE and _current_attendance_open and not attendance_is_ignored(state, _current_saturday):
     _notice_key = f"attendance_notice_{_current_saturday.isoformat()}"
     if not st.session_state.get(_notice_key, False):
         @st.dialog("📋 Feuille de présence ouverte")
@@ -1648,9 +1689,22 @@ with attendance_tab:
 
     attendance_key = attendance_sheet_key(_current_saturday)
     current_sheet = state.get("attendance", {}).get(attendance_key)
+    current_ignored = attendance_is_ignored(state, _current_saturday)
     open_start, open_end = attendance_window(_current_saturday)
 
-    if _current_attendance_open:
+    if current_ignored:
+        st.info(
+            f"0️⃣ Présences remises à zéro pour le samedi {_current_saturday.strftime('%d/%m/%Y')}. "
+            "Cette feuille ne compte plus dans le bilan du mois."
+        )
+        if IS_ADMIN and _current_attendance_open:
+            if st.button("↩️ Réactiver cette feuille", key=f"restore_attendance_{attendance_key}"):
+                restore_attendance_sheet(state, _current_saturday, "principal")
+                st.session_state.liturgie_state = state
+                if persist(show_success=False):
+                    st.success("Feuille réactivée.")
+                    st.rerun()
+    elif _current_attendance_open:
         st.success(
             f"🟢 Feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} ouverte "
             "jusqu'au dimanche 23 h 59."
@@ -1775,6 +1829,27 @@ with attendance_tab:
                 f"Dernière modification : {selected_sheet.get('updated_by', '—')} · "
                 f"{selected_sheet.get('updated_at', '')}"
             )
+
+        if IS_ADMIN:
+            with st.expander("🗑️ Supprimer / remettre cette feuille à zéro", expanded=False):
+                st.warning(
+                    "Cette action est réservée à l'administrateur principal. La feuille sera retirée du bilan "
+                    "et ne comptera plus pour l'éligibilité. Les programmes, membres et rotations ne sont pas touchés."
+                )
+                confirm_delete_attendance = st.checkbox(
+                    f"Je confirme la remise à zéro de la feuille du {selected_day.strftime('%d/%m/%Y')}",
+                    key=f"confirm_delete_attendance_{selected_key}",
+                )
+                if st.button("🗑️ Supprimer cette feuille de présence", key=f"delete_attendance_{selected_key}"):
+                    if not confirm_delete_attendance:
+                        st.error("Cochez la confirmation avant de supprimer la feuille.")
+                    else:
+                        ok, message = delete_attendance_sheet(state, selected_day, "principal")
+                        if ok:
+                            st.session_state.liturgie_state = state
+                            if persist(show_success=False):
+                                st.success(message)
+                                st.rerun()
 
         if IS_ADMIN and not attendance_is_open(selected_day, _now):
             with st.expander("✏️ Corriger cette ancienne feuille", expanded=False):
