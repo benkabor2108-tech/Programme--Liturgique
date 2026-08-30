@@ -22,7 +22,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.30-persistant-supabase-v3.7-roles-presences"
+APP_VERSION = "2026.08.30-persistant-supabase-v3.7.1-roles-presences-auth-fix"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
@@ -1351,15 +1351,28 @@ def remove_member_permanently(state, code):
 
 
 def configured_password(role):
-    """Retourne les mots de passe stockés côté serveur dans Streamlit Secrets."""
+    """Retourne les mots de passe stockés côté serveur dans Streamlit Secrets.
+
+    Compatibilité : accepte les clés historiques imbriquées dans [auth]
+    et les clés de secours placées à la racine des Secrets.
+    """
     try:
         auth = st.secrets.get("auth", {})
         if role == "principal":
-            if "ADMIN_PASSWORD" in st.secrets:
-                return str(st.secrets["ADMIN_PASSWORD"])
-            return str(auth.get("admin_password", ""))
+            # Format historique v3.6 : clé racine ADMIN_PASSWORD.
+            if "ADMIN_PASSWORD" in st.secrets and str(st.secrets["ADMIN_PASSWORD"]).strip():
+                return str(st.secrets["ADMIN_PASSWORD"]).strip()
+            value = str(auth.get("admin_password", "")).strip()
+            if value:
+                return value
         if role == "adjoint":
-            return str(auth.get("adjoint_password", ""))
+            # Format recommandé : [auth] adjoint_password = "..."
+            value = str(auth.get("adjoint_password", "")).strip()
+            if value:
+                return value
+            # Format de secours plus simple à diagnostiquer dans Streamlit Secrets.
+            if "ADJOINT_PASSWORD" in st.secrets and str(st.secrets["ADJOINT_PASSWORD"]).strip():
+                return str(st.secrets["ADJOINT_PASSWORD"]).strip()
     except Exception:
         pass
     return ""
@@ -1426,7 +1439,7 @@ def render_admin_login():
                 expected = configured_password(wanted_role)
                 if not expected:
                     if wanted_role == "adjoint":
-                        st.error("Le mot de passe de l'administrateur adjoint n'est pas encore configuré.")
+                        st.error("Le mot de passe de l'administrateur adjoint n'est pas encore détecté. Vérifiez [auth] adjoint_password ou la clé racine ADJOINT_PASSWORD dans Streamlit Secrets.")
                     else:
                         st.error("Le mot de passe administrateur principal n'est pas encore configuré dans Streamlit Secrets.")
                 elif hmac.compare_digest(str(password), expected):
