@@ -2,9 +2,11 @@ import calendar
 import csv
 import io
 import hmac
+import hashlib
 import json
 import random
 import re
+import secrets
 import unicodedata
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta
@@ -22,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.30-persistant-supabase-v3.7.2-presences-reset"
+APP_VERSION = "2026.08.30-persistant-supabase-v3.7.3-adjoint-password"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
@@ -117,6 +119,7 @@ def initial_state():
         "history": [],
         "attendance": {},
         "attendance_ignored": [],
+        "auth_security": {},
         "audit_log": [],
     }
 
@@ -167,6 +170,7 @@ def normalize_state(raw):
         "history": [],
         "attendance": {},
         "attendance_ignored": [],
+        "auth_security": {},
         "audit_log": [],
     }
 
@@ -191,7 +195,7 @@ def normalize_state(raw):
             requested = highest + 1
         state["next_member_number"][lang] = max(highest + 1, requested)
 
-    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "attendance_ignored", "audit_log"]:
+    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "attendance_ignored", "auth_security", "audit_log"]:
         if key in raw:
             state[key] = deepcopy(raw[key])
 
@@ -1223,6 +1227,7 @@ def rotation_reset_keep_names(state):
     fresh["people"] = {c: blank_person() for c in member_codes(state)}
     fresh["attendance"] = deepcopy(state.get("attendance", {}))
     fresh["attendance_ignored"] = deepcopy(state.get("attendance_ignored", []))
+    fresh["auth_security"] = deepcopy(state.get("auth_security", {}))
     fresh["audit_log"] = deepcopy(state.get("audit_log", []))
     return fresh
 
@@ -1392,26 +1397,23 @@ def remove_member_permanently(state, code):
 
 
 def configured_password(role):
-    """Retourne les mots de passe stockés côté serveur dans Streamlit Secrets.
+    """Retourne le mot de passe de secours stocké dans Streamlit Secrets.
 
-    Compatibilité : accepte les clés historiques imbriquées dans [auth]
-    et les clés de secours placées à la racine des Secrets.
+    Le mot de passe de l'adjoint peut ensuite être remplacé par un hash sécurisé
+    conservé dans l'état Supabase. Le principal reste géré par Streamlit Secrets.
     """
     try:
         auth = st.secrets.get("auth", {})
         if role == "principal":
-            # Format historique v3.6 : clé racine ADMIN_PASSWORD.
             if "ADMIN_PASSWORD" in st.secrets and str(st.secrets["ADMIN_PASSWORD"]).strip():
                 return str(st.secrets["ADMIN_PASSWORD"]).strip()
             value = str(auth.get("admin_password", "")).strip()
             if value:
                 return value
         if role == "adjoint":
-            # Format recommandé : [auth] adjoint_password = "..."
             value = str(auth.get("adjoint_password", "")).strip()
             if value:
                 return value
-            # Format de secours plus simple à diagnostiquer dans Streamlit Secrets.
             if "ADJOINT_PASSWORD" in st.secrets and str(st.secrets["ADJOINT_PASSWORD"]).strip():
                 return str(st.secrets["ADJOINT_PASSWORD"]).strip()
     except Exception:
@@ -1419,11 +1421,93 @@ def configured_password(role):
     return ""
 
 
+PASSWORD_ITERATIONS = 260_000
+
+
+def hash_password(password):
+    """PBKDF2-SHA256 salé. Aucun mot de passe en clair n'est stocké dans Supabase."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        str(password).encode("utf-8"),
+        salt,
+        PASSWORD_ITERATIONS,
+    )
+    return f"pbkdf2_sha256${PASSWORD_ITERATIONS}${salt.hex()}${digest.hex()}"
+
+
+def verify_password_hash(password, stored):
+    try:
+        scheme, iterations, salt_hex, digest_hex = str(stored).split("$", 3)
+        if scheme != "pbkdf2_sha256":
+            return False
+        digest = hashlib.pbkdf2_hmac(
+            "sha256",
+            str(password).encode("utf-8"),
+            bytes.fromhex(salt_hex),
+            int(iterations),
+        )
+        return hmac.compare_digest(digest.hex(), digest_hex)
+    except Exception:
+        return False
+
+
+def auth_security(state):
+    value = state.setdefault("auth_security", {})
+    if not isinstance(value, dict):
+        state["auth_security"] = {}
+    return state["auth_security"]
+
+
+def adjoint_password_hash(state):
+    return str(auth_security(state).get("adjoint_password_hash", "")).strip()
+
+
+def adjoint_auth_version(state):
+    try:
+        return int(auth_security(state).get("adjoint_auth_version", 0))
+    except Exception:
+        return 0
+
+
+def adjoint_must_change_password(state):
+    return bool(auth_security(state).get("adjoint_must_change_password", False))
+
+
+def verify_role_password(role, password, state):
+    """Vérifie le mot de passe sans jamais exposer le hash ni le secret."""
+    if role == "adjoint":
+        stored = adjoint_password_hash(state)
+        if stored:
+            return verify_password_hash(password, stored)
+    expected = configured_password(role)
+    return bool(expected) and hmac.compare_digest(str(password), expected)
+
+
+def set_adjoint_password(state, new_password, actor, must_change=False):
+    security = auth_security(state)
+    security["adjoint_password_hash"] = hash_password(new_password)
+    security["adjoint_must_change_password"] = bool(must_change)
+    security["adjoint_password_updated_at"] = now_ouaga().isoformat()
+    security["adjoint_password_updated_by"] = str(actor)
+    security["adjoint_auth_version"] = adjoint_auth_version(state) + 1
+    state.setdefault("audit_log", []).append({
+        "at": now_ouaga().isoformat(),
+        "actor": str(actor),
+        "action": "adjoint_password_reset" if must_change else "adjoint_password_change",
+    })
+    return int(security["adjoint_auth_version"])
+
+
+def provisional_password(length=10):
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
 def current_role():
     role = st.session_state.get("auth_role", "")
     if role in ("principal", "adjoint"):
         return role
-    # Compatibilité avec une éventuelle session v3.6 encore ouverte.
     if st.session_state.get("admin_authenticated", False):
         return "principal"
     return "consultation"
@@ -1442,25 +1526,111 @@ def staff_mode():
 
 
 def admin_mode():
-    """Alias conservé pour les fonctions historiques : admin = administrateur principal."""
+    """Alias historique : admin = administrateur principal."""
     return principal_mode()
 
 
-def render_admin_login():
-    """Authentification par session avec deux niveaux de droits."""
+def render_adjoint_self_service(state):
+    must_change = adjoint_must_change_password(state)
+    if must_change:
+        st.warning("🔑 Mot de passe provisoire : choisissez maintenant votre nouveau mot de passe.")
+    with st.expander("🔑 Changer mon mot de passe", expanded=must_change):
+        with st.form("adjoint_change_password_form", clear_on_submit=True):
+            if not must_change:
+                current = st.text_input("Mot de passe actuel", type="password", key="adjoint_current_password")
+            else:
+                current = ""
+            new1 = st.text_input("Nouveau mot de passe", type="password", key="adjoint_new_password")
+            new2 = st.text_input("Confirmer le nouveau mot de passe", type="password", key="adjoint_confirm_password")
+            clicked = st.form_submit_button("💾 Enregistrer mon nouveau mot de passe")
+        if clicked:
+            if not must_change and not verify_role_password("adjoint", current, state):
+                st.error("Le mot de passe actuel est incorrect.")
+            elif len(str(new1)) < 8:
+                st.error("Le nouveau mot de passe doit contenir au moins 8 caractères.")
+            elif new1 != new2:
+                st.error("Les deux nouveaux mots de passe ne correspondent pas.")
+            elif not must_change and str(new1) == str(current):
+                st.error("Choisissez un mot de passe différent de l'ancien.")
+            else:
+                version = set_adjoint_password(
+                    state,
+                    str(new1),
+                    actor="Administrateur adjoint",
+                    must_change=False,
+                )
+                st.session_state.adjoint_auth_version = version
+                st.session_state.liturgie_state = state
+                if persist(show_success=False):
+                    st.session_state.password_change_notice = "Mot de passe adjoint modifié avec succès."
+                    st.rerun()
+
+
+def render_principal_adjoint_password_tools(state):
+    with st.expander("🔑 Réinitialiser le mot de passe de l'adjoint"):
+        st.caption(
+            "À utiliser seulement si l'adjoint a oublié son mot de passe. "
+            "Un code provisoire sera créé ; à sa prochaine connexion, il devra choisir lui-même un nouveau mot de passe."
+        )
+        with st.form("principal_reset_adjoint_password_form"):
+            confirm = st.checkbox("Je confirme la réinitialisation du mot de passe de l'adjoint.")
+            clicked = st.form_submit_button("🔄 Créer un mot de passe provisoire")
+        if clicked:
+            if not confirm:
+                st.error("Cochez la confirmation avant la réinitialisation.")
+            else:
+                temporary = provisional_password()
+                set_adjoint_password(
+                    state,
+                    temporary,
+                    actor="Administrateur principal",
+                    must_change=True,
+                )
+                st.session_state.liturgie_state = state
+                if persist(show_success=False):
+                    st.session_state.adjoint_temp_password = temporary
+                    st.rerun()
+        temporary = st.session_state.get("adjoint_temp_password", "")
+        if temporary:
+            st.success("Mot de passe provisoire créé. Communiquez-le uniquement à l'administrateur adjoint.")
+            st.code(temporary, language=None)
+            st.caption("Ce code est affiché uniquement dans votre session d'administrateur principal.")
+            if st.button("🙈 Masquer le code provisoire", key="hide_adjoint_temp_password"):
+                st.session_state.pop("adjoint_temp_password", None)
+                st.rerun()
+
+
+def render_admin_login(state):
+    """Authentification par session avec deux niveaux de droits et autonomie de l'adjoint."""
     with st.sidebar:
         st.markdown("### 🔐 Accès administrateur")
         role = current_role()
+
+        # Une réinitialisation par le principal invalide les anciennes sessions adjointes.
+        if role == "adjoint":
+            session_version = st.session_state.get("adjoint_auth_version", adjoint_auth_version(state))
+            if int(session_version) != adjoint_auth_version(state):
+                st.session_state.auth_role = "consultation"
+                st.session_state.admin_authenticated = False
+                st.session_state.pop("adjoint_auth_version", None)
+                st.warning("Votre mot de passe a été réinitialisé. Reconnectez-vous avec le nouveau code provisoire.")
+                role = "consultation"
+
         if role in ("principal", "adjoint"):
             if role == "principal":
                 st.success("Mode administrateur principal actif")
+                render_principal_adjoint_password_tools(state)
             else:
                 st.success("Mode administrateur adjoint actif")
                 st.caption("Droits limités : saisie de la feuille de présence en cours. Les anciennes feuilles restent en lecture seule.")
+                if st.session_state.pop("password_change_notice", None):
+                    st.success("Mot de passe modifié avec succès.")
+                render_adjoint_self_service(state)
             if st.button("🚪 Se déconnecter", key="admin_logout"):
                 st.session_state.auth_role = "consultation"
                 st.session_state.admin_authenticated = False
                 st.session_state.pop("admin_password_input", None)
+                st.session_state.pop("adjoint_auth_version", None)
                 st.rerun()
         else:
             st.caption("Mode consultation. Connectez-vous uniquement si vous êtes autorisé à modifier des données.")
@@ -1477,15 +1647,20 @@ def render_admin_login():
             )
             if st.button("🔓 Se connecter", key="admin_login"):
                 wanted_role = "principal" if profile == "Administrateur principal" else "adjoint"
-                expected = configured_password(wanted_role)
-                if not expected:
+                # Distinguer « non configuré » d'un mot de passe incorrect.
+                has_adjoint = bool(adjoint_password_hash(state) or configured_password("adjoint"))
+                has_principal = bool(configured_password("principal"))
+                configured = has_principal if wanted_role == "principal" else has_adjoint
+                if not configured:
                     if wanted_role == "adjoint":
-                        st.error("Le mot de passe de l'administrateur adjoint n'est pas encore détecté. Vérifiez [auth] adjoint_password ou la clé racine ADJOINT_PASSWORD dans Streamlit Secrets.")
+                        st.error("Le mot de passe de l'administrateur adjoint n'est pas encore configuré.")
                     else:
                         st.error("Le mot de passe administrateur principal n'est pas encore configuré dans Streamlit Secrets.")
-                elif hmac.compare_digest(str(password), expected):
+                elif verify_role_password(wanted_role, password, state):
                     st.session_state.auth_role = wanted_role
                     st.session_state.admin_authenticated = wanted_role == "principal"
+                    if wanted_role == "adjoint":
+                        st.session_state.adjoint_auth_version = adjoint_auth_version(state)
                     st.session_state.pop("admin_password_input", None)
                     st.rerun()
                 else:
@@ -1494,7 +1669,7 @@ def render_admin_login():
 
 ensure_loaded()
 state = st.session_state.liturgie_state
-render_admin_login()
+render_admin_login(state)
 IS_ADMIN = principal_mode()
 IS_ADJOINT = adjoint_mode()
 CAN_EDIT_ATTENDANCE = staff_mode()
