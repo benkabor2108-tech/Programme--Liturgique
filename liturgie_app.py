@@ -7,7 +7,8 @@ import random
 import re
 import unicodedata
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 from html import escape
 from urllib.parse import quote
 
@@ -21,9 +22,14 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.26-persistant-supabase-v3.6-lecture-seule-admin"
+APP_VERSION = "2026.08.30-persistant-supabase-v3.7-roles-presences"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
+APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
+ATTENDANCE_OPEN_TIME = time(18, 30)
+ATTENDANCE_CLOSE_TIME = time(23, 59, 59)
+ATTENDANCE_MIN_COUNT = 2
+ATTENDANCE_MAX_J = 2  # 3 J ou plus = non éligible le mois suivant.
 AELF_ZONES = {
     "Calendrier romain": "romain",
     "Afrique du Nord": "afrique",
@@ -109,6 +115,8 @@ def initial_state():
         "monition_pairs": [],
         "next_first_language": "FR",
         "history": [],
+        "attendance": {},
+        "audit_log": [],
     }
 
 
@@ -156,6 +164,8 @@ def normalize_state(raw):
         "monition_pairs": [],
         "next_first_language": "FR",
         "history": [],
+        "attendance": {},
+        "audit_log": [],
     }
 
     raw_names = raw.get("names", {}) if isinstance(raw.get("names"), dict) else {}
@@ -179,7 +189,7 @@ def normalize_state(raw):
             requested = highest + 1
         state["next_member_number"][lang] = max(highest + 1, requested)
 
-    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history"]:
+    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "audit_log"]:
         if key in raw:
             state[key] = deepcopy(raw[key])
 
@@ -292,6 +302,211 @@ def sundays(year, month):
 
 def active_codes(state, lang):
     return [c for c in member_codes(state, lang) if state["active"].get(c, True)]
+
+
+def now_ouaga():
+    return datetime.now(APP_TIMEZONE)
+
+
+def previous_month(year, month):
+    return (year - 1, 12) if month == 1 else (year, month - 1)
+
+
+def next_month(year, month):
+    return (year + 1, 1) if month == 12 else (year, month + 1)
+
+
+def latest_saturday(day):
+    days_back = (day.weekday() - 5) % 7
+    return day - timedelta(days=days_back)
+
+
+def attendance_window(saturday):
+    start = datetime.combine(saturday, ATTENDANCE_OPEN_TIME, tzinfo=APP_TIMEZONE)
+    close_day = saturday + timedelta(days=1)
+    end = datetime.combine(close_day, ATTENDANCE_CLOSE_TIME, tzinfo=APP_TIMEZONE)
+    return start, end
+
+
+def attendance_is_open(saturday, moment=None):
+    moment = moment or now_ouaga()
+    start, end = attendance_window(saturday)
+    return start <= moment <= end
+
+
+def attendance_sheet_key(saturday):
+    return saturday.isoformat()
+
+
+def attendance_sheets_for_month(state, year, month):
+    result = []
+    for key, sheet in (state.get("attendance", {}) or {}).items():
+        try:
+            d = date.fromisoformat(str(sheet.get("date") or key))
+        except Exception:
+            continue
+        if d.year == year and d.month == month:
+            result.append((d, sheet))
+    return sorted(result, key=lambda item: item[0])
+
+
+def new_attendance_sheet(state, saturday, actor="system"):
+    codes = [c for c in member_codes(state) if state.get("active", {}).get(c, True)]
+    stamp = now_ouaga().isoformat()
+    return {
+        "date": saturday.isoformat(),
+        "members": codes,
+        "names": {c: state.get("names", {}).get(c, c) for c in codes},
+        "statuses": {c: "" for c in codes},
+        "created_at": stamp,
+        "created_by": actor,
+        "updated_at": stamp,
+        "updated_by": actor,
+    }
+
+
+def ensure_attendance_sheet(state, saturday, actor="system"):
+    state.setdefault("attendance", {})
+    key = attendance_sheet_key(saturday)
+    created = False
+    if key not in state["attendance"]:
+        state["attendance"][key] = new_attendance_sheet(state, saturday, actor=actor)
+        created = True
+    sheet = state["attendance"][key]
+    sheet.setdefault("members", [])
+    sheet.setdefault("names", {})
+    sheet.setdefault("statuses", {})
+    # Pendant la fenêtre ouverte, ajouter les nouveaux membres actifs sans effacer l'historique existant.
+    if attendance_is_open(saturday):
+        for code in member_codes(state):
+            if state.get("active", {}).get(code, True) and code not in sheet["members"]:
+                sheet["members"].append(code)
+                sheet["names"][code] = state.get("names", {}).get(code, code)
+                sheet["statuses"][code] = ""
+    return sheet, created
+
+
+def attendance_actor_label(role):
+    return "Administrateur principal" if role == "principal" else "Administrateur adjoint" if role == "adjoint" else "Système"
+
+
+def save_attendance_sheet(state, saturday, statuses, actor_role, reason=""):
+    sheet, _ = ensure_attendance_sheet(state, saturday, actor=attendance_actor_label(actor_role))
+    clean = {}
+    for code in sheet.get("members", []):
+        value = str(statuses.get(code, "")).strip().upper()
+        if value not in ("P", "J", "A"):
+            return False, f"Le statut de {sheet.get('names', {}).get(code, code)} n'est pas renseigné."
+        clean[code] = value
+
+    before = dict(sheet.get("statuses", {}))
+    changes = {
+        code: {"avant": before.get(code, ""), "après": value}
+        for code, value in clean.items()
+        if before.get(code, "") != value
+    }
+    stamp = now_ouaga().isoformat()
+    sheet["statuses"] = clean
+    sheet["updated_at"] = stamp
+    sheet["updated_by"] = attendance_actor_label(actor_role)
+    if reason:
+        sheet["last_correction_reason"] = str(reason).strip()
+
+    state.setdefault("audit_log", []).append({
+        "type": "attendance_update",
+        "date": saturday.isoformat(),
+        "timestamp": stamp,
+        "actor": attendance_actor_label(actor_role),
+        "reason": str(reason).strip(),
+        "changes": changes,
+    })
+    return True, "Feuille de présence enregistrée."
+
+
+def attendance_eligibility(state, target_year, target_month):
+    prev_year, prev_month = previous_month(target_year, target_month)
+    sheets = attendance_sheets_for_month(state, prev_year, prev_month)
+    # Pour éviter de pénaliser un mois ancien ou incomplet lors de la migration,
+    # la règle automatique s'active à partir de 2 feuilles de présence enregistrées.
+    enforced = len(sheets) >= 2
+    details = {}
+    for code in member_codes(state):
+        p_count = j_count = a_count = 0
+        for _, sheet in sheets:
+            status = str((sheet.get("statuses", {}) or {}).get(code, "")).upper()
+            if status == "P":
+                p_count += 1
+            elif status == "J":
+                j_count += 1
+            elif status == "A":
+                a_count += 1
+        counted = p_count + j_count
+        eligible = True
+        reason = "Règle non activée : moins de 2 feuilles enregistrées."
+        if enforced:
+            if j_count >= 3:
+                eligible = False
+                reason = "3 absences justifiées (J) ou plus."
+            elif counted < ATTENDANCE_MIN_COUNT:
+                eligible = False
+                reason = f"Moins de {ATTENDANCE_MIN_COUNT} présences comptabilisées (P + J)."
+            else:
+                reason = "Critères de présence remplis."
+        details[code] = {
+            "P": p_count,
+            "J": j_count,
+            "A": a_count,
+            "P+J": counted,
+            "eligible": eligible,
+            "reason": reason,
+        }
+    return {
+        "enforced": enforced,
+        "previous_year": prev_year,
+        "previous_month": prev_month,
+        "sheet_count": len(sheets),
+        "details": details,
+    }
+
+
+def programmable_codes(state, lang, service_date):
+    base = active_codes(state, lang)
+    eligibility = attendance_eligibility(state, service_date.year, service_date.month)
+    if not eligibility["enforced"]:
+        return base
+    return [c for c in base if eligibility["details"].get(c, {}).get("eligible", True)]
+
+
+def attendance_summary_rows(state, target_year, target_month):
+    eligibility = attendance_eligibility(state, target_year, target_month)
+    rows = []
+    for code in member_codes(state):
+        info = eligibility["details"].get(code, {})
+        rows.append({
+            "Membre": state.get("names", {}).get(code, code),
+            "Langue": "FR" if code.startswith("F") else "MO",
+            "P": info.get("P", 0),
+            "J": info.get("J", 0),
+            "A": info.get("A", 0),
+            "P + J": info.get("P+J", 0),
+            "Éligible": "✅ Oui" if info.get("eligible", True) else "⛔ Non",
+            "Motif": info.get("reason", ""),
+        })
+    return eligibility, rows
+
+
+def attendance_sheet_rows(sheet):
+    names = sheet.get("names", {}) if isinstance(sheet, dict) else {}
+    statuses = sheet.get("statuses", {}) if isinstance(sheet, dict) else {}
+    members = sheet.get("members", []) if isinstance(sheet, dict) else []
+    rows = []
+    for code in members:
+        rows.append({
+            "Membre": names.get(code, code),
+            "Langue": "FR" if str(code).startswith("F") else "MO",
+            "Statut": statuses.get(code, "") or "—",
+        })
+    return rows
 
 
 def normalize_label(value):
@@ -452,8 +667,8 @@ def refs_to_text(refs, dates):
     return "\n".join(lines)
 
 
-def reading_pool(state, lang, excluded):
-    codes = active_codes(state, lang)
+def reading_pool(state, lang, excluded, service_date):
+    codes = programmable_codes(state, lang, service_date)
     seen = [c for c in state["reading_cycle_seen"].get(lang, []) if c in codes]
     if codes and len(set(seen)) >= len(codes):
         state["reading_cycle_seen"][lang] = []
@@ -478,8 +693,8 @@ def reading_rank(state, code, today):
 
 
 def choose_readers(state, today, rng):
-    fr_pool = reading_pool(state, "FR", set())
-    mo_pool = reading_pool(state, "MO", set())
+    fr_pool = reading_pool(state, "FR", set(), today)
+    mo_pool = reading_pool(state, "MO", set(), today)
     if not fr_pool or not mo_pool:
         raise RuntimeError(
             "La rotation ne permet pas de choisir les deux lecteurs sans casser une règle. "
@@ -499,9 +714,9 @@ def choose_readers(state, today, rng):
     return choices[0][1], choices[0][2]
 
 
-def monition_pool(state, lang, excluded):
+def monition_pool(state, lang, excluded, service_date):
     return [
-        c for c in active_codes(state, lang)
+        c for c in programmable_codes(state, lang, service_date)
         if c not in excluded
         and state["people"][c]["next_role"] in (None, "MONITION")
     ]
@@ -513,8 +728,8 @@ def monition_rank(state, code, today):
 
 
 def choose_monitions(state, today, excluded, rng):
-    fr_pool = monition_pool(state, "FR", excluded)
-    mo_pool = monition_pool(state, "MO", excluded)
+    fr_pool = monition_pool(state, "FR", excluded, today)
+    mo_pool = monition_pool(state, "MO", excluded, today)
     if not fr_pool or not mo_pool:
         raise RuntimeError(
             "Impossible d'attribuer la monition/P.U. sans casser l'alternance individuelle Lecture ↔ Monition."
@@ -539,7 +754,7 @@ def announcement_rank(state, code, today):
 
 
 def choose_announcement(state, lang, today, excluded, rng):
-    pool = [c for c in active_codes(state, lang) if c not in excluded]
+    pool = [c for c in programmable_codes(state, lang, today) if c not in excluded]
     if not pool:
         raise RuntimeError(f"Aucun membre {lang} disponible pour les annonces sans cumul de fonction.")
     rng.shuffle(pool)
@@ -586,8 +801,13 @@ def generate_month(state, year, month, refs, seed):
             "Ce mois figure déjà dans l'historique. Supprimez d'abord ce mois de l'historique ou choisissez un autre mois."
         )
 
-    if len(active_codes(state, "FR")) < 3 or len(active_codes(state, "MO")) < 3:
-        raise RuntimeError("Il faut au moins 3 membres actifs dans chaque langue pour respecter les fonctions sans cumul.")
+    month_days = sundays(year, month)
+    reference_day = month_days[0] if month_days else date(year, month, 1)
+    if len(programmable_codes(state, "FR", reference_day)) < 3 or len(programmable_codes(state, "MO", reference_day)) < 3:
+        raise RuntimeError(
+            "Il faut au moins 3 membres éligibles dans chaque langue pour respecter les fonctions sans cumul. "
+            "Vérifiez les statuts Actif/Absent et le bilan des présences du mois précédent."
+        )
 
     rows = []
     for sunday in sundays(year, month):
@@ -961,6 +1181,8 @@ def rotation_reset_keep_names(state):
     fresh["names"] = {c: state.get("names", {}).get(c, c) for c in member_codes(state)}
     fresh["active"] = {c: bool(state.get("active", {}).get(c, True)) for c in member_codes(state)}
     fresh["people"] = {c: blank_person() for c in member_codes(state)}
+    fresh["attendance"] = deepcopy(state.get("attendance", {}))
+    fresh["audit_log"] = deepcopy(state.get("audit_log", []))
     return fresh
 
 
@@ -1128,45 +1350,88 @@ def remove_member_permanently(state, code):
     return True, f"{name} a été retiré définitivement des membres futurs. L'historique passé est conservé."
 
 
-def configured_admin_password():
-    """Retourne le mot de passe administrateur stocké côté serveur dans Streamlit Secrets."""
+def configured_password(role):
+    """Retourne les mots de passe stockés côté serveur dans Streamlit Secrets."""
     try:
-        if "ADMIN_PASSWORD" in st.secrets:
-            return str(st.secrets["ADMIN_PASSWORD"])
-        if "auth" in st.secrets and "admin_password" in st.secrets["auth"]:
-            return str(st.secrets["auth"]["admin_password"])
+        auth = st.secrets.get("auth", {})
+        if role == "principal":
+            if "ADMIN_PASSWORD" in st.secrets:
+                return str(st.secrets["ADMIN_PASSWORD"])
+            return str(auth.get("admin_password", ""))
+        if role == "adjoint":
+            return str(auth.get("adjoint_password", ""))
     except Exception:
         pass
     return ""
 
 
+def current_role():
+    role = st.session_state.get("auth_role", "")
+    if role in ("principal", "adjoint"):
+        return role
+    # Compatibilité avec une éventuelle session v3.6 encore ouverte.
+    if st.session_state.get("admin_authenticated", False):
+        return "principal"
+    return "consultation"
+
+
+def principal_mode():
+    return current_role() == "principal"
+
+
+def adjoint_mode():
+    return current_role() == "adjoint"
+
+
+def staff_mode():
+    return current_role() in ("principal", "adjoint")
+
+
 def admin_mode():
-    return bool(st.session_state.get("admin_authenticated", False))
+    """Alias conservé pour les fonctions historiques : admin = administrateur principal."""
+    return principal_mode()
 
 
 def render_admin_login():
-    """Authentification par session : chaque appareil reste lecteur sauf connexion administrateur."""
+    """Authentification par session avec deux niveaux de droits."""
     with st.sidebar:
         st.markdown("### 🔐 Accès administrateur")
-        if admin_mode():
-            st.success("Mode administrateur actif")
+        role = current_role()
+        if role in ("principal", "adjoint"):
+            if role == "principal":
+                st.success("Mode administrateur principal actif")
+            else:
+                st.success("Mode administrateur adjoint actif")
+                st.caption("Droits limités : saisie de la feuille de présence en cours. Les anciennes feuilles restent en lecture seule.")
             if st.button("🚪 Se déconnecter", key="admin_logout"):
+                st.session_state.auth_role = "consultation"
                 st.session_state.admin_authenticated = False
                 st.session_state.pop("admin_password_input", None)
                 st.rerun()
         else:
-            st.caption("Mode consultation. Seul l'administrateur peut modifier les données.")
+            st.caption("Mode consultation. Connectez-vous uniquement si vous êtes autorisé à modifier des données.")
+            profile = st.radio(
+                "Profil",
+                ["Administrateur principal", "Administrateur adjoint"],
+                horizontal=False,
+                key="admin_profile_choice",
+            )
             password = st.text_input(
-                "Mot de passe administrateur",
+                "Mot de passe",
                 type="password",
                 key="admin_password_input",
             )
             if st.button("🔓 Se connecter", key="admin_login"):
-                expected = configured_admin_password()
+                wanted_role = "principal" if profile == "Administrateur principal" else "adjoint"
+                expected = configured_password(wanted_role)
                 if not expected:
-                    st.error("Le mot de passe administrateur n'est pas encore configuré dans Streamlit Secrets.")
+                    if wanted_role == "adjoint":
+                        st.error("Le mot de passe de l'administrateur adjoint n'est pas encore configuré.")
+                    else:
+                        st.error("Le mot de passe administrateur principal n'est pas encore configuré dans Streamlit Secrets.")
                 elif hmac.compare_digest(str(password), expected):
-                    st.session_state.admin_authenticated = True
+                    st.session_state.auth_role = wanted_role
+                    st.session_state.admin_authenticated = wanted_role == "principal"
                     st.session_state.pop("admin_password_input", None)
                     st.rerun()
                 else:
@@ -1176,17 +1441,44 @@ def render_admin_login():
 ensure_loaded()
 state = st.session_state.liturgie_state
 render_admin_login()
-IS_ADMIN = admin_mode()
+IS_ADMIN = principal_mode()
+IS_ADJOINT = adjoint_mode()
+CAN_EDIT_ATTENDANCE = staff_mode()
+
+# Création automatique de la feuille pendant la fenêtre samedi 18 h 30 → dimanche 23 h 59.
+_now = now_ouaga()
+_current_saturday = latest_saturday(_now.date())
+_current_attendance_open = attendance_is_open(_current_saturday, _now)
+if CAN_EDIT_ATTENDANCE and _current_attendance_open:
+    _sheet, _created = ensure_attendance_sheet(state, _current_saturday, actor=attendance_actor_label(current_role()))
+    if _created:
+        st.session_state.liturgie_state = state
+        persist(show_success=False)
 
 st.title("⛪ Programme liturgique")
 st.caption(f"Version : {APP_VERSION}")
 if IS_ADMIN:
-    st.success("🔐 Administrateur — modifications autorisées")
+    st.success("🔐 Administrateur principal — modifications complètes autorisées")
+elif IS_ADJOINT:
+    st.success("🔐 Administrateur adjoint — droits limités aux présences en cours")
 else:
     st.info("👁️ Consultation uniquement — aucune modification n'est autorisée sur cet appareil.")
 st.write("Programmation automatique — les codes techniques restent en arrière-plan, seuls les noms sont affichés.")
 
-home_tab, generate_tab, members_tab, history_tab = st.tabs(["🏠 Accueil", "✨ Générer", "👥 Membres", "🕘 Historique"])
+if CAN_EDIT_ATTENDANCE and _current_attendance_open:
+    _notice_key = f"attendance_notice_{_current_saturday.isoformat()}"
+    if not st.session_state.get(_notice_key, False):
+        @st.dialog("📋 Feuille de présence ouverte")
+        def _attendance_notice():
+            st.success(f"Feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} ouverte.")
+            st.write("Renseignez P, J ou A dans l'onglet **📋 Présences**. La feuille sera verrouillée dimanche à 23 h 59.")
+            st.caption("P = présent · J = absence justifiée comptée comme présence · A = absence non justifiée.")
+        _attendance_notice()
+        st.session_state[_notice_key] = True
+
+home_tab, generate_tab, members_tab, attendance_tab, history_tab = st.tabs(
+    ["🏠 Accueil", "✨ Générer", "👥 Membres", "📋 Présences", "🕘 Historique"]
+)
 
 with home_tab:
     c1, c2, c3 = st.columns(3)
@@ -1205,7 +1497,8 @@ with home_tab:
     st.info(
         "Règles actives : alternance FR/MO des 1re et 2e lectures ; alternance individuelle "
         "Lecture ↔ Monition/P.U. au prochain passage ; équité des intervalles ; binômes non figés ; "
-        "annonces indépendantes et sans cumul de fonction le même dimanche."
+        "annonces indépendantes et sans cumul de fonction le même dimanche. "
+        "Présences : P et J comptent ; P + J ≥ 2 pour le mois suivant ; 3 J ou plus = non éligible."
     )
 
     if st.button("🔄 Actualiser depuis Supabase"):
@@ -1332,6 +1625,203 @@ with members_tab:
                 else:
                     st.error(message)
 
+
+with attendance_tab:
+    st.subheader("📋 Présences aux répétitions")
+    st.caption(
+        "P = Présent · J = absence justifiée (comptée comme présence) · "
+        "A = absence non justifiée. Pour être éligible le mois suivant : P + J ≥ 2 et moins de 3 J."
+    )
+
+    attendance_key = attendance_sheet_key(_current_saturday)
+    current_sheet = state.get("attendance", {}).get(attendance_key)
+    open_start, open_end = attendance_window(_current_saturday)
+
+    if _current_attendance_open:
+        st.success(
+            f"🟢 Feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} ouverte "
+            "jusqu'au dimanche 23 h 59."
+        )
+        if current_sheet:
+            if CAN_EDIT_ATTENDANCE:
+                st.info(
+                    "Vous pouvez renseigner ou corriger cette feuille tant que la fenêtre est ouverte. "
+                    "Après dimanche 23 h 59, seul l'administrateur principal pourra la corriger."
+                )
+                with st.form(f"attendance_current_{attendance_key}"):
+                    current_statuses = {}
+                    last_lang = None
+                    for code in current_sheet.get("members", []):
+                        lang = "FR" if str(code).startswith("F") else "MO"
+                        if lang != last_lang:
+                            st.markdown("**Francophones**" if lang == "FR" else "**Mooréphones**")
+                            last_lang = lang
+                        old_status = str(current_sheet.get("statuses", {}).get(code, "")).upper()
+                        options = ["—", "P", "J", "A"]
+                        default_index = options.index(old_status) if old_status in options else 0
+                        current_statuses[code] = st.radio(
+                            current_sheet.get("names", {}).get(code, code),
+                            options,
+                            index=default_index,
+                            horizontal=True,
+                            key=f"att_current_{attendance_key}_{code}",
+                        )
+                    save_current = st.form_submit_button("💾 Enregistrer la feuille", type="primary")
+                if save_current:
+                    clean_statuses = {
+                        code: ("" if value == "—" else value)
+                        for code, value in current_statuses.items()
+                    }
+                    ok, message = save_attendance_sheet(
+                        state,
+                        _current_saturday,
+                        clean_statuses,
+                        current_role(),
+                    )
+                    if ok:
+                        st.session_state.liturgie_state = state
+                        if persist(show_success=False):
+                            st.success(message)
+                            st.rerun()
+                    else:
+                        st.error(message)
+            else:
+                st.info("La feuille est visible en consultation. Seuls les administrateurs peuvent la renseigner.")
+                st.dataframe(attendance_sheet_rows(current_sheet), use_container_width=True, hide_index=True)
+        elif not CAN_EDIT_ATTENDANCE:
+            st.info("La feuille sera créée automatiquement lorsqu'un administrateur ouvrira l'application pendant la fenêtre de saisie.")
+    else:
+        if _now < open_start and _now.date() == _current_saturday:
+            st.info(
+                f"⏳ La feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} "
+                "s'ouvrira automatiquement à 18 h 30."
+            )
+        else:
+            st.info(
+                f"🔒 La dernière fenêtre de saisie ({_current_saturday.strftime('%d/%m/%Y')}) est fermée. "
+                "Seul l'administrateur principal peut corriger une ancienne feuille."
+            )
+        if current_sheet:
+            st.dataframe(attendance_sheet_rows(current_sheet), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("### 📊 Bilan du mois et éligibilité")
+    target_year, target_month = next_month(_current_saturday.year, _current_saturday.month)
+    eligibility, eligibility_rows = attendance_summary_rows(state, target_year, target_month)
+    prev_label = f"{MONTHS[eligibility['previous_month'] - 1]} {eligibility['previous_year']}"
+    target_label = f"{MONTHS[target_month - 1]} {target_year}"
+    if eligibility["enforced"]:
+        eligible_count = sum(
+            1 for code, info in eligibility["details"].items()
+            if info.get("eligible", True) and state.get("active", {}).get(code, True)
+        )
+        ineligible_count = sum(
+            1 for code, info in eligibility["details"].items()
+            if not info.get("eligible", True) and state.get("active", {}).get(code, True)
+        )
+        st.success(
+            f"Règle active pour la programmation de {target_label} : "
+            f"{eligible_count} éligible(s), {ineligible_count} non éligible(s), "
+            f"sur {eligibility['sheet_count']} feuille(s) de {prev_label}."
+        )
+    else:
+        st.warning(
+            f"Règle d'éligibilité non encore appliquée pour {target_label} : "
+            f"{eligibility['sheet_count']} feuille(s) enregistrée(s) en {prev_label}. "
+            "Il faut au moins 2 feuilles enregistrées pour activer automatiquement le filtre."
+        )
+    with st.expander("Voir le détail P / J / A"):
+        st.dataframe(eligibility_rows, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("### 🗂️ Anciennes feuilles")
+    attendance_items = []
+    for key, sheet in (state.get("attendance", {}) or {}).items():
+        try:
+            sheet_day = date.fromisoformat(str(sheet.get("date") or key))
+        except Exception:
+            continue
+        attendance_items.append((sheet_day, key, sheet))
+    attendance_items.sort(key=lambda item: item[0], reverse=True)
+
+    if not attendance_items:
+        st.caption("Aucune feuille de présence enregistrée pour le moment.")
+    else:
+        attendance_keys = [item[1] for item in attendance_items]
+        selected_key = st.selectbox(
+            "Choisir une feuille",
+            attendance_keys,
+            format_func=lambda k: date.fromisoformat(k).strftime("%d/%m/%Y"),
+            key="attendance_history_select",
+        )
+        selected_sheet = state.get("attendance", {}).get(selected_key, {})
+        selected_day = date.fromisoformat(selected_key)
+        st.dataframe(attendance_sheet_rows(selected_sheet), use_container_width=True, hide_index=True)
+        if selected_sheet.get("updated_at"):
+            st.caption(
+                f"Dernière modification : {selected_sheet.get('updated_by', '—')} · "
+                f"{selected_sheet.get('updated_at', '')}"
+            )
+
+        if IS_ADMIN and not attendance_is_open(selected_day, _now):
+            with st.expander("✏️ Corriger cette ancienne feuille", expanded=False):
+                st.warning(
+                    "Cette correction est réservée à l'administrateur principal et sera inscrite dans le journal."
+                )
+                with st.form(f"attendance_history_edit_{selected_key}"):
+                    corrected_statuses = {}
+                    last_lang = None
+                    for code in selected_sheet.get("members", []):
+                        lang = "FR" if str(code).startswith("F") else "MO"
+                        if lang != last_lang:
+                            st.markdown("**Francophones**" if lang == "FR" else "**Mooréphones**")
+                            last_lang = lang
+                        old_status = str(selected_sheet.get("statuses", {}).get(code, "")).upper()
+                        options = ["—", "P", "J", "A"]
+                        default_index = options.index(old_status) if old_status in options else 0
+                        corrected_statuses[code] = st.radio(
+                            selected_sheet.get("names", {}).get(code, code),
+                            options,
+                            index=default_index,
+                            horizontal=True,
+                            key=f"att_history_{selected_key}_{code}",
+                        )
+                    correction_reason = st.text_input(
+                        "Motif de la correction",
+                        placeholder="Ex. justificatif reçu après la répétition",
+                    )
+                    confirm_correction = st.checkbox(
+                        "Je confirme la correction de cette ancienne feuille."
+                    )
+                    save_correction = st.form_submit_button("💾 Enregistrer la correction")
+                if save_correction:
+                    if not confirm_correction:
+                        st.error("Cochez la confirmation avant d'enregistrer la correction.")
+                    elif not str(correction_reason).strip():
+                        st.error("Indiquez le motif de la correction.")
+                    else:
+                        clean_statuses = {
+                            code: ("" if value == "—" else value)
+                            for code, value in corrected_statuses.items()
+                        }
+                        ok, message = save_attendance_sheet(
+                            state,
+                            selected_day,
+                            clean_statuses,
+                            "principal",
+                            reason=correction_reason,
+                        )
+                        if ok:
+                            st.session_state.liturgie_state = state
+                            if persist(show_success=False):
+                                st.success(message)
+                                st.rerun()
+                        else:
+                            st.error(message)
+        elif IS_ADJOINT and not attendance_is_open(selected_day, _now):
+            st.caption("🔒 Ancienne feuille en lecture seule pour l'administrateur adjoint.")
+
+
 with generate_tab:
     if not IS_ADMIN:
         st.subheader("✨ Générer")
@@ -1358,6 +1848,38 @@ with generate_tab:
             month = st.selectbox("Mois", range(1, 13), index=8, format_func=lambda m: MONTHS[m - 1])
 
         month_sundays = sundays(year, month)
+
+        attendance_check, attendance_check_rows = attendance_summary_rows(state, year, month)
+        prev_att_label = f"{MONTHS[attendance_check['previous_month'] - 1]} {attendance_check['previous_year']}"
+        if attendance_check["enforced"]:
+            blocked = [
+                state.get("names", {}).get(code, code)
+                for code, info in attendance_check["details"].items()
+                if not info.get("eligible", True) and state.get("active", {}).get(code, True)
+            ]
+            st.info(
+                f"📋 Éligibilité calculée à partir des présences de {prev_att_label}. "
+                f"{len(blocked)} membre(s) actif(s) seront automatiquement exclus de la programmation "
+                "si leurs critères de présence ne sont pas remplis."
+            )
+            if blocked:
+                with st.expander("Voir les lecteurs non éligibles"):
+                    st.dataframe(
+                        [row for row in attendance_check_rows if row["Éligible"] == "⛔ Non"],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+        elif attendance_check["sheet_count"] > 0:
+            st.warning(
+                f"📋 Seulement {attendance_check['sheet_count']} feuille(s) de présence enregistrée(s) en {prev_att_label}. "
+                "Le filtre automatique d'éligibilité n'est pas encore activé (minimum : 2 feuilles)."
+            )
+        else:
+            st.caption(
+                f"📋 Aucune feuille de présence enregistrée en {prev_att_label} : "
+                "la programmation utilise les statuts Actif/Absent habituels."
+            )
+
         st.subheader("2. Références bibliques")
         ref_mode = st.radio(
             "Source des références",
@@ -1544,8 +2066,8 @@ with history_tab:
         st.markdown("### 🧹 Nouveau départ complet")
         st.warning(
             "Cette opération efface TOUT l'historique des célébrations et remet tous les compteurs, "
-            "dates de passage, prochaines fonctions et binômes à zéro. La liste des membres, leurs noms "
-            "et leurs statuts Actif/Absent sont conservés."
+            "dates de passage, prochaines fonctions et binômes à zéro. La liste des membres, leurs noms, "
+            "leurs statuts Actif/Absent et les feuilles de présence sont conservés."
         )
         with st.form("full_reset_form"):
             confirm_full_reset = st.checkbox(
