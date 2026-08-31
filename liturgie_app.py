@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.30-persistant-supabase-v3.8.0-whatsapp-preparation"
+APP_VERSION = "2026.08.31-persistant-supabase-v3.8.1-whatsapp-manuel"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
@@ -365,6 +365,101 @@ def next_published_sunday(state, reference_day=None):
         if day >= reference_day:
             candidates.append((day, row))
     return min(candidates, key=lambda item: item[0]) if candidates else (None, None)
+
+
+
+def whatsapp_click_to_chat_url(number, message):
+    """Construit un lien wa.me sans exposer le numéro dans l'interface."""
+    digits = re.sub(r"\D", "", str(number or ""))
+    if not digits:
+        return ""
+    return f"https://wa.me/{digits}?text={quote(str(message), safe='')}"
+
+
+def whatsapp_reminder_message(name, sunday, role):
+    """Message réutilisable aujourd'hui en manuel et plus tard avec la Cloud API."""
+    return (
+        f"Bonjour {name},\n\n"
+        f"Rappel pour le dimanche {sunday.strftime('%d/%m/%Y')} : "
+        f"vous êtes programmé(e) pour {role}.\n\n"
+        "Merci de confirmer la bonne réception. 🙏"
+    )
+
+
+def render_whatsapp_reminder_sender(state):
+    """
+    Prépare les rappels du prochain dimanche publié.
+    Les numéros restent masqués : ils servent uniquement à construire le lien WhatsApp.
+    """
+    next_day, next_row = next_published_sunday(state)
+    if not next_row:
+        st.info("Aucun dimanche futur publié dans l'historique pour préparer un rappel.")
+        return
+
+    st.write(f"**Prochain dimanche publié : {next_day.strftime('%d/%m/%Y')}**")
+    st.caption(
+        "Envoi assisté sans Meta Cloud API : le message est préparé automatiquement, "
+        "WhatsApp s'ouvre sur le bon destinataire, puis vous appuyez sur Envoyer. "
+        "À utiliser notamment le mercredi et le vendredi à 18 h 30."
+    )
+
+    codes = next_row.get("codes", {}) if isinstance(next_row.get("codes"), dict) else {}
+    ordered_codes = [codes.get(k) for k in ("r1", "r2", "f_mon", "m_mon", "f_ann", "m_ann")]
+
+    preview_rows = []
+    ready_items = []
+    for code in ordered_codes:
+        if not code:
+            continue
+        contact = state.get("whatsapp_contacts", {}).get(code, {})
+        if not isinstance(contact, dict):
+            contact = {}
+        number = str(contact.get("number", "")).strip()
+        consent = bool(contact.get("consent", False))
+        enabled = bool(contact.get("enabled", False))
+        ready = bool(number and consent and enabled)
+        role = whatsapp_role_for_code(next_row, code)
+        name = state.get("names", {}).get(code, code)
+
+        preview_rows.append({
+            "Membre": name,
+            "Rôle": role,
+            "WhatsApp": "Prêt ✅" if ready else "À configurer",
+        })
+        if ready:
+            ready_items.append((code, name, role, number))
+
+    st.dataframe(preview_rows, use_container_width=True, hide_index=True)
+
+    if not ready_items:
+        st.warning(
+            "Aucun membre programmé n'est encore prêt pour l'envoi. "
+            "L'administrateur principal doit enregistrer le numéro, le consentement "
+            "et activer les rappels WhatsApp."
+        )
+        return
+
+    st.markdown("**Messages prêts à envoyer**")
+    for code, name, role, number in ready_items:
+        message = whatsapp_reminder_message(name, next_day, role)
+        url = whatsapp_click_to_chat_url(number, message)
+        with st.container(border=True):
+            st.markdown(f"**{name}**")
+            st.caption(role)
+            st.text_area(
+                "Message préparé",
+                value=message,
+                height=145,
+                disabled=True,
+                key=f"wa_message_{next_day.isoformat()}_{code}",
+            )
+            st.link_button(
+                f"📲 Ouvrir WhatsApp pour {name}",
+                url,
+                use_container_width=True,
+            )
+
+    st.success(f"{len(ready_items)} rappel(s) prêt(s). Les numéros restent masqués sur cet écran.")
 
 
 def active_codes(state, lang):
@@ -1921,7 +2016,7 @@ with members_tab:
                             key=f"wa_consent_{code}",
                         )
                         enabled = st.checkbox(
-                            "Rappels automatiques activés",
+                            "Rappels WhatsApp activés",
                             value=bool(contact.get("enabled", False)),
                             key=f"wa_enabled_{code}",
                         )
@@ -1957,29 +2052,8 @@ with members_tab:
                         st.success("Numéros WhatsApp et consentements enregistrés.")
                         st.rerun()
 
-        with st.expander("🔎 Aperçu du prochain rappel", expanded=False):
-            next_day, next_row = next_published_sunday(state)
-            if not next_row:
-                st.info("Aucun dimanche futur publié dans l'historique pour préparer un rappel.")
-            else:
-                st.write(f"**Prochain dimanche publié : {next_day.strftime('%d/%m/%Y')}**")
-                preview_rows = []
-                codes = next_row.get("codes", {}) if isinstance(next_row.get("codes"), dict) else {}
-                ordered_codes = [codes.get(k) for k in ("r1", "r2", "f_mon", "m_mon", "f_ann", "m_ann")]
-                for code in ordered_codes:
-                    if not code:
-                        continue
-                    contact = whatsapp_contact(state, code)
-                    ready = bool(contact.get("number") and contact.get("consent") and contact.get("enabled"))
-                    preview_rows.append({
-                        "Membre": state.get("names", {}).get(code, code),
-                        "Rôle": whatsapp_role_for_code(next_row, code),
-                        "WhatsApp": "Prêt ✅" if ready else "À configurer",
-                    })
-                st.dataframe(preview_rows, use_container_width=True, hide_index=True)
-                st.caption(
-                    "Étape suivante : connecter l'application à la WhatsApp Business Platform (Cloud API) puis programmer les envois du mercredi et du vendredi à 18 h 30."
-                )
+        with st.expander("📲 Préparer les rappels WhatsApp", expanded=False):
+            render_whatsapp_reminder_sender(state)
 
         st.divider()
         st.subheader("🗑️ Retirer définitivement un membre")
@@ -2008,6 +2082,16 @@ with members_tab:
                         st.rerun()
                 else:
                     st.error(message)
+
+
+    if IS_ADJOINT:
+        st.divider()
+        st.subheader("📲 Rappels WhatsApp")
+        st.caption(
+            "L'administrateur adjoint peut préparer et ouvrir les rappels des membres programmés. "
+            "Les numéros de téléphone restent masqués et ne sont pas modifiables ici."
+        )
+        render_whatsapp_reminder_sender(state)
 
 
 with attendance_tab:
