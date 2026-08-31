@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.31-persistant-supabase-v3.8.2-whatsapp-suivi"
+APP_VERSION = "2026.08.31-persistant-supabase-v3.9.0-whatsapp-automation-ready"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
@@ -370,9 +370,237 @@ def next_published_sunday(state, reference_day=None):
 
 
 
+
+def whatsapp_cloud_config():
+    """
+    Lit la configuration future de la WhatsApp Business Platform.
+    Aucun secret n'est affiché dans l'interface.
+    Tant que enabled=False ou que la configuration est incomplète,
+    aucun envoi automatique n'est possible.
+    """
+    try:
+        cfg = st.secrets.get("whatsapp_cloud_api", {})
+    except Exception:
+        cfg = {}
+
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "graph_api_version": str(cfg.get("graph_api_version", "")).strip(),
+        "phone_number_id": str(cfg.get("phone_number_id", "")).strip(),
+        "access_token": str(cfg.get("access_token", "")).strip(),
+        "template_wednesday": str(cfg.get("template_wednesday", "")).strip(),
+        "template_friday": str(cfg.get("template_friday", "")).strip(),
+        "template_language": str(cfg.get("template_language", "fr")).strip() or "fr",
+    }
+
+
+def whatsapp_cloud_readiness(config):
+    required = {
+        "Version API": bool(config.get("graph_api_version")),
+        "Identifiant du numéro WhatsApp Business": bool(config.get("phone_number_id")),
+        "Jeton d'accès": bool(config.get("access_token")),
+        "Modèle du mercredi": bool(config.get("template_wednesday")),
+        "Modèle du vendredi": bool(config.get("template_friday")),
+    }
+    complete = all(required.values())
+    active = bool(config.get("enabled")) and complete
+    return required, complete, active
+
+
+def whatsapp_template_name(config, reminder_kind):
+    return (
+        config.get("template_friday", "")
+        if reminder_kind == "vendredi"
+        else config.get("template_wednesday", "")
+    )
+
+
+def build_whatsapp_automation_jobs(state, sunday, row):
+    """
+    Construit les travaux que le futur ordonnanceur devra exécuter.
+    Cette fonction ne transmet aucun message.
+    """
+    reminder_dates = whatsapp_reminder_dates(sunday)
+    codes = row.get("codes", {}) if isinstance(row.get("codes"), dict) else {}
+    ordered_codes = [codes.get(k) for k in ("r1", "r2", "f_mon", "m_mon", "f_ann", "m_ann")]
+    send_log = state.get("whatsapp_send_log", {}) if isinstance(state.get("whatsapp_send_log"), dict) else {}
+    jobs = []
+
+    for reminder_kind in ("mercredi", "vendredi"):
+        scheduled_at = datetime.combine(
+            reminder_dates[reminder_kind],
+            time(18, 30),
+            tzinfo=APP_TIMEZONE,
+        )
+        for code in ordered_codes:
+            if not code:
+                continue
+            contact = state.get("whatsapp_contacts", {}).get(code, {})
+            if not isinstance(contact, dict):
+                contact = {}
+            number = str(contact.get("number", "")).strip()
+            consent = bool(contact.get("consent", False))
+            enabled = bool(contact.get("enabled", False))
+            ready = bool(number and consent and enabled)
+            send_key = whatsapp_send_key(sunday, reminder_kind, code)
+            jobs.append({
+                "member_code": code,
+                "member_name": state.get("names", {}).get(code, code),
+                "role": whatsapp_role_for_code(row, code),
+                "reminder_kind": reminder_kind,
+                "scheduled_at": scheduled_at,
+                "number": number,
+                "ready": ready,
+                "already_sent": send_key in send_log,
+                "send_key": send_key,
+            })
+    return jobs
+
+
+def due_whatsapp_automation_jobs(state, reference_time=None):
+    """
+    Retourne uniquement les travaux arrivés à échéance et encore non envoyés.
+    Cette fonction ne transmet aucun message.
+    """
+    reference_time = reference_time or now_ouaga()
+    sunday, row = next_published_sunday(state, reference_day=reference_time.date())
+    if not row:
+        return []
+    jobs = build_whatsapp_automation_jobs(state, sunday, row)
+    return [
+        job for job in jobs
+        if job["ready"]
+        and not job["already_sent"]
+        and job["scheduled_at"] <= reference_time
+    ]
+
+
+def whatsapp_cloud_send_template(config, number, template_name, language_code, name, sunday, role):
+    """
+    Adaptateur futur pour Meta Cloud API.
+    IMPORTANT : cette fonction n'est jamais appelée par l'interface tant que
+    l'automatisation n'est pas explicitement activée et qu'un ordonnanceur
+    externe n'est pas branché.
+    Le modèle futur devra accepter 3 paramètres texte : nom, date, rôle.
+    """
+    required, complete, active = whatsapp_cloud_readiness(config)
+    if not active:
+        return False, "Automatisation désactivée ou configuration incomplète."
+
+    digits = re.sub(r"\\D", "", str(number or ""))
+    if not digits:
+        return False, "Numéro WhatsApp invalide."
+
+    version = str(config["graph_api_version"]).lstrip("/")
+    endpoint = (
+        f"https://graph.facebook.com/{version}/"
+        f"{config['phone_number_id']}/messages"
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": digits,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": language_code},
+            "components": [{
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": str(name)},
+                    {"type": "text", "text": sunday.strftime("%d/%m/%Y")},
+                    {"type": "text", "text": str(role)},
+                ],
+            }],
+        },
+    }
+    headers = {
+        "Authorization": f"Bearer {config['access_token']}",
+        "Content-Type": "application/json",
+    }
+    try:
+        response = requests.post(endpoint, headers=headers, json=payload, timeout=20)
+        if response.ok:
+            return True, "Message accepté par la plateforme WhatsApp."
+        return False, f"Erreur WhatsApp API HTTP {response.status_code}."
+    except Exception as exc:
+        return False, f"Connexion WhatsApp API impossible : {exc}"
+
+
+def render_whatsapp_automation_ready(state):
+    """
+    Tableau de bord de préparation à l'automatisation complète.
+    Il est volontairement en mode simulation tant que l'API et l'ordonnanceur
+    ne sont pas activés.
+    """
+    st.subheader("🤖 Automatisation complète — préparation")
+    config = whatsapp_cloud_config()
+    required, complete, active = whatsapp_cloud_readiness(config)
+
+    if active:
+        st.success("API WhatsApp configurée et autorisée côté application.")
+    else:
+        st.info(
+            "Mode sécurisé : automatisation désactivée. "
+            "Aucun message WhatsApp ne peut partir automatiquement depuis cette version."
+        )
+
+    checklist_rows = [
+        {"Élément": label, "État": "Prêt ✅" if ok else "À configurer"}
+        for label, ok in required.items()
+    ]
+    checklist_rows.append({
+        "Élément": "Activation explicite de l'automatisation",
+        "État": "Activée ✅" if config.get("enabled") else "Désactivée 🔒",
+    })
+    checklist_rows.append({
+        "Élément": "Ordonnanceur externe mercredi/vendredi 18 h 30",
+        "État": "À brancher",
+    })
+    st.dataframe(checklist_rows, use_container_width=True, hide_index=True)
+
+    sunday, row = next_published_sunday(state)
+    if not row:
+        st.caption("Aucun dimanche futur publié pour simuler le moteur.")
+        return
+
+    jobs = build_whatsapp_automation_jobs(state, sunday, row)
+    sim_rows = []
+    for job in jobs:
+        sim_rows.append({
+            "Quand": job["scheduled_at"].strftime("%d/%m/%Y %H:%M"),
+            "Membre": job["member_name"],
+            "Rôle": job["role"],
+            "État": (
+                "Déjà envoyé ✅"
+                if job["already_sent"]
+                else ("Prêt" if job["ready"] else "À configurer")
+            ),
+        })
+
+    with st.expander("🧪 Simulation du futur ordonnanceur", expanded=False):
+        st.caption(
+            "Cette simulation montre ce que l'automatisation devra envoyer. "
+            "Elle n'appelle aucune API et n'envoie aucun message."
+        )
+        st.dataframe(sim_rows, use_container_width=True, hide_index=True)
+
+        ready_jobs = [j for j in jobs if j["ready"] and not j["already_sent"]]
+        st.success(
+            f"{len(ready_jobs)} travail(aux) prêt(s) dans la file future "
+            f"pour le dimanche {sunday.strftime('%d/%m/%Y')}."
+        )
+
+        st.markdown(
+            "**Pour passer à l'envoi automatique plus tard :** "
+            "il restera à renseigner les identifiants API réels, faire approuver "
+            "les deux modèles WhatsApp, puis brancher un ordonnanceur fiable. "
+            "Aucun secret n'est nécessaire aujourd'hui."
+        )
+
+
 def whatsapp_click_to_chat_url(number, message):
     """Construit un lien wa.me sans exposer le numéro dans l'interface."""
-    digits = re.sub(r"\D", "", str(number or ""))
+    digits = re.sub(r"\\D", "", str(number or ""))
     if not digits:
         return ""
     return f"https://wa.me/{digits}?text={quote(str(message), safe='')}"
@@ -2178,6 +2406,9 @@ with members_tab:
 
         with st.expander("📲 Préparer les rappels WhatsApp", expanded=False):
             render_whatsapp_reminder_sender(state)
+
+        with st.expander("🤖 Automatisation WhatsApp — prête mais désactivée", expanded=False):
+            render_whatsapp_automation_ready(state)
 
         st.divider()
         st.subheader("🗑️ Retirer définitivement un membre")
