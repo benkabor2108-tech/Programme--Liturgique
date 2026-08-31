@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.31-persistant-supabase-v3.8.1-whatsapp-manuel"
+APP_VERSION = "2026.08.31-persistant-supabase-v3.8.2-whatsapp-suivi"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
@@ -121,6 +121,7 @@ def initial_state():
         "attendance_ignored": [],
         "auth_security": {},
         "whatsapp_contacts": {code: {"number": "", "consent": False, "enabled": False} for code in FR + MO},
+        "whatsapp_send_log": {},
         "audit_log": [],
     }
 
@@ -173,6 +174,7 @@ def normalize_state(raw):
         "attendance_ignored": [],
         "auth_security": {},
         "whatsapp_contacts": {},
+        "whatsapp_send_log": {},
         "audit_log": [],
     }
 
@@ -204,7 +206,7 @@ def normalize_state(raw):
             requested = highest + 1
         state["next_member_number"][lang] = max(highest + 1, requested)
 
-    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "attendance_ignored", "auth_security", "audit_log"]:
+    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:
         if key in raw:
             state[key] = deepcopy(raw[key])
 
@@ -376,19 +378,71 @@ def whatsapp_click_to_chat_url(number, message):
     return f"https://wa.me/{digits}?text={quote(str(message), safe='')}"
 
 
-def whatsapp_reminder_message(name, sunday, role):
+def whatsapp_reminder_message(name, sunday, role, reminder_kind="mercredi"):
     """Message réutilisable aujourd'hui en manuel et plus tard avec la Cloud API."""
+    prefix = "Deuxième rappel" if reminder_kind == "vendredi" else "Rappel"
     return (
         f"Bonjour {name},\n\n"
-        f"Rappel pour le dimanche {sunday.strftime('%d/%m/%Y')} : "
+        f"{prefix} pour le dimanche {sunday.strftime('%d/%m/%Y')} : "
         f"vous êtes programmé(e) pour {role}.\n\n"
         "Merci de confirmer la bonne réception. 🙏"
     )
 
 
+def whatsapp_reminder_dates(sunday):
+    return {
+        "mercredi": sunday - timedelta(days=4),
+        "vendredi": sunday - timedelta(days=2),
+    }
+
+
+def whatsapp_send_key(sunday, reminder_kind, code):
+    return f"{sunday.isoformat()}|{reminder_kind}|{code}"
+
+
+def whatsapp_actor_label():
+    if globals().get("IS_ADMIN", False):
+        return "Administrateur principal"
+    if globals().get("IS_ADJOINT", False):
+        return "Administrateur adjoint"
+    return "Consultation"
+
+
+def mark_whatsapp_reminder_sent(state, sunday, reminder_kind, code, sent=True):
+    log = state.setdefault("whatsapp_send_log", {})
+    key = whatsapp_send_key(sunday, reminder_kind, code)
+    if sent:
+        stamp = now_ouaga().isoformat()
+        log[key] = {
+            "status": "sent",
+            "sent_at": stamp,
+            "actor": whatsapp_actor_label(),
+        }
+        state.setdefault("audit_log", []).append({
+            "type": "whatsapp_reminder_sent",
+            "date": sunday.isoformat(),
+            "reminder": reminder_kind,
+            "member": code,
+            "timestamp": stamp,
+            "actor": whatsapp_actor_label(),
+        })
+    else:
+        previous = log.pop(key, None)
+        stamp = now_ouaga().isoformat()
+        state.setdefault("audit_log", []).append({
+            "type": "whatsapp_reminder_unmark",
+            "date": sunday.isoformat(),
+            "reminder": reminder_kind,
+            "member": code,
+            "timestamp": stamp,
+            "actor": whatsapp_actor_label(),
+            "previous": previous or {},
+        })
+
+
 def render_whatsapp_reminder_sender(state):
     """
-    Prépare les rappels du prochain dimanche publié.
+    Prépare les rappels du prochain dimanche publié et garde la trace des envois.
     Les numéros restent masqués : ils servent uniquement à construire le lien WhatsApp.
     """
     next_day, next_row = next_published_sunday(state)
@@ -396,11 +450,29 @@ def render_whatsapp_reminder_sender(state):
         st.info("Aucun dimanche futur publié dans l'historique pour préparer un rappel.")
         return
 
+    reminder_dates = whatsapp_reminder_dates(next_day)
     st.write(f"**Prochain dimanche publié : {next_day.strftime('%d/%m/%Y')}**")
     st.caption(
         "Envoi assisté sans Meta Cloud API : le message est préparé automatiquement, "
         "WhatsApp s'ouvre sur le bon destinataire, puis vous appuyez sur Envoyer. "
-        "À utiliser notamment le mercredi et le vendredi à 18 h 30."
+        "L'application conserve ensuite votre confirmation d'envoi."
+    )
+
+    reminder_kind = st.radio(
+        "Rappel à préparer",
+        ["mercredi", "vendredi"],
+        horizontal=True,
+        format_func=lambda kind: (
+            f"{'Mercredi' if kind == 'mercredi' else 'Vendredi'} "
+            f"{reminder_dates[kind].strftime('%d/%m/%Y')} à 18 h 30"
+        ),
+        key=f"wa_reminder_kind_{next_day.isoformat()}",
+    )
+    reminder_day = reminder_dates[reminder_kind]
+    st.info(
+        f"📅 Rappel sélectionné : "
+        f"{'mercredi' if reminder_kind == 'mercredi' else 'vendredi'} "
+        f"{reminder_day.strftime('%d/%m/%Y')} à 18 h 30."
     )
 
     codes = next_row.get("codes", {}) if isinstance(next_row.get("codes"), dict) else {}
@@ -408,6 +480,8 @@ def render_whatsapp_reminder_sender(state):
 
     preview_rows = []
     ready_items = []
+    log = state.get("whatsapp_send_log", {}) if isinstance(state.get("whatsapp_send_log"), dict) else {}
+
     for code in ordered_codes:
         if not code:
             continue
@@ -420,14 +494,22 @@ def render_whatsapp_reminder_sender(state):
         ready = bool(number and consent and enabled)
         role = whatsapp_role_for_code(next_row, code)
         name = state.get("names", {}).get(code, code)
+        sent = whatsapp_send_key(next_day, reminder_kind, code) in log
+
+        if sent:
+            status = "Envoyé ✅"
+        elif ready:
+            status = "Prêt ✅"
+        else:
+            status = "À configurer"
 
         preview_rows.append({
             "Membre": name,
             "Rôle": role,
-            "WhatsApp": "Prêt ✅" if ready else "À configurer",
+            "WhatsApp": status,
         })
         if ready:
-            ready_items.append((code, name, role, number))
+            ready_items.append((code, name, role, number, sent))
 
     st.dataframe(preview_rows, use_container_width=True, hide_index=True)
 
@@ -440,18 +522,33 @@ def render_whatsapp_reminder_sender(state):
         return
 
     st.markdown("**Messages prêts à envoyer**")
-    for code, name, role, number in ready_items:
-        message = whatsapp_reminder_message(name, next_day, role)
+    for code, name, role, number, sent in ready_items:
+        message = whatsapp_reminder_message(name, next_day, role, reminder_kind)
         url = whatsapp_click_to_chat_url(number, message)
+        send_key = whatsapp_send_key(next_day, reminder_kind, code)
+        send_info = log.get(send_key, {}) if isinstance(log.get(send_key), dict) else {}
+
         with st.container(border=True):
             st.markdown(f"**{name}**")
             st.caption(role)
+
+            if sent:
+                sent_at = str(send_info.get("sent_at", ""))
+                try:
+                    sent_label = datetime.fromisoformat(sent_at).astimezone(APP_TIMEZONE).strftime("%d/%m/%Y à %H:%M")
+                except Exception:
+                    sent_label = "date non disponible"
+                st.success(
+                    f"✅ Rappel marqué comme envoyé le {sent_label} "
+                    f"par {send_info.get('actor', 'administrateur')}."
+                )
+
             st.text_area(
                 "Message préparé",
                 value=message,
                 height=145,
                 disabled=True,
-                key=f"wa_message_{next_day.isoformat()}_{code}",
+                key=f"wa_message_{next_day.isoformat()}_{reminder_kind}_{code}",
             )
             st.link_button(
                 f"📲 Ouvrir WhatsApp pour {name}",
@@ -459,7 +556,33 @@ def render_whatsapp_reminder_sender(state):
                 use_container_width=True,
             )
 
-    st.success(f"{len(ready_items)} rappel(s) prêt(s). Les numéros restent masqués sur cet écran.")
+            if not sent:
+                if st.button(
+                    "✅ Marquer ce rappel comme envoyé",
+                    key=f"wa_mark_sent_{next_day.isoformat()}_{reminder_kind}_{code}",
+                    use_container_width=True,
+                ):
+                    mark_whatsapp_reminder_sent(state, next_day, reminder_kind, code, sent=True)
+                    st.session_state.liturgie_state = state
+                    if persist(show_success=False):
+                        st.success("Envoi enregistré.")
+                        st.rerun()
+            else:
+                if st.button(
+                    "↩️ Annuler le marquage d'envoi",
+                    key=f"wa_unmark_sent_{next_day.isoformat()}_{reminder_kind}_{code}",
+                    use_container_width=True,
+                ):
+                    mark_whatsapp_reminder_sent(state, next_day, reminder_kind, code, sent=False)
+                    st.session_state.liturgie_state = state
+                    if persist(show_success=False):
+                        st.rerun()
+
+    sent_count = sum(1 for _, _, _, _, sent in ready_items if sent)
+    st.success(
+        f"{len(ready_items)} rappel(s) configuré(s) pour ce créneau ; "
+        f"{sent_count} déjà marqué(s) comme envoyé(s). Les numéros restent masqués sur cet écran."
+    )
 
 
 def active_codes(state, lang):
@@ -1388,6 +1511,7 @@ def rotation_reset_keep_names(state):
         c: deepcopy(state.get("whatsapp_contacts", {}).get(c, {"number": "", "consent": False, "enabled": False}))
         for c in member_codes(fresh)
     }
+    fresh["whatsapp_send_log"] = deepcopy(state.get("whatsapp_send_log", {}))
     fresh["audit_log"] = deepcopy(state.get("audit_log", []))
     return fresh
 
