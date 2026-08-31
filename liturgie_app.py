@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.30-persistant-supabase-v3.7.3-adjoint-password"
+APP_VERSION = "2026.08.30-persistant-supabase-v3.8.0-whatsapp-preparation"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
@@ -120,6 +120,7 @@ def initial_state():
         "attendance": {},
         "attendance_ignored": [],
         "auth_security": {},
+        "whatsapp_contacts": {code: {"number": "", "consent": False, "enabled": False} for code in FR + MO},
         "audit_log": [],
     }
 
@@ -171,12 +172,14 @@ def normalize_state(raw):
         "attendance": {},
         "attendance_ignored": [],
         "auth_security": {},
+        "whatsapp_contacts": {},
         "audit_log": [],
     }
 
     raw_names = raw.get("names", {}) if isinstance(raw.get("names"), dict) else {}
     raw_active = raw.get("active", {}) if isinstance(raw.get("active"), dict) else {}
     raw_people = raw.get("people", {}) if isinstance(raw.get("people"), dict) else {}
+    raw_whatsapp = raw.get("whatsapp_contacts", {}) if isinstance(raw.get("whatsapp_contacts"), dict) else {}
 
     for code in member_codes(state):
         state["names"][code] = str(raw_names.get(code) or DEFAULT_NAMES.get(code) or code).strip()
@@ -184,6 +187,12 @@ def normalize_state(raw):
         state["people"][code] = blank_person()
         if isinstance(raw_people.get(code), dict):
             state["people"][code].update(raw_people[code])
+        contact = raw_whatsapp.get(code, {}) if isinstance(raw_whatsapp.get(code), dict) else {}
+        state["whatsapp_contacts"][code] = {
+            "number": str(contact.get("number", "")).strip(),
+            "consent": bool(contact.get("consent", False)),
+            "enabled": bool(contact.get("enabled", False)),
+        }
 
     raw_next = raw.get("next_member_number", {}) if isinstance(raw.get("next_member_number"), dict) else {}
     for lang in ("FR", "MO"):
@@ -304,6 +313,58 @@ def sundays(year, month):
         d for d in cal.itermonthdates(year, month)
         if d.month == month and d.weekday() == 6
     ]
+
+
+def normalize_whatsapp_number(value):
+    """Normalise un numéro au format international E.164 simplifié (+ puis chiffres)."""
+    raw = str(value or "").strip()
+    if not raw:
+        return "", ""
+    cleaned = re.sub(r"[\s().-]+", "", raw)
+    if cleaned.startswith("00"):
+        cleaned = "+" + cleaned[2:]
+    if not cleaned.startswith("+"):
+        return "", "Le numéro doit commencer par + et l'indicatif du pays, par exemple +226."
+    digits = cleaned[1:]
+    if not digits.isdigit() or not (8 <= len(digits) <= 15):
+        return "", "Numéro WhatsApp invalide. Utilisez le format international, par exemple +226XXXXXXXX."
+    return "+" + digits, ""
+
+
+def whatsapp_contact(state, code):
+    state.setdefault("whatsapp_contacts", {})
+    contact = state["whatsapp_contacts"].setdefault(code, {"number": "", "consent": False, "enabled": False})
+    contact.setdefault("number", "")
+    contact.setdefault("consent", False)
+    contact.setdefault("enabled", False)
+    return contact
+
+
+def whatsapp_role_for_code(row, code):
+    codes = row.get("codes", {}) if isinstance(row.get("codes"), dict) else {}
+    lang = "Français" if str(code).startswith("F") else "Mooré"
+    if codes.get("r1") == code:
+        return f"1re lecture — {lang}"
+    if codes.get("r2") == code:
+        return f"2e lecture — {lang}"
+    if codes.get("f_mon") == code or codes.get("m_mon") == code:
+        return f"Monition + P.U. — {lang}"
+    if codes.get("f_ann") == code or codes.get("m_ann") == code:
+        return f"Annonces — {lang}"
+    return ""
+
+
+def next_published_sunday(state, reference_day=None):
+    reference_day = reference_day or now_ouaga().date()
+    candidates = []
+    for row in state.get("history", []) or []:
+        try:
+            day = date.fromisoformat(str(row.get("date", "")))
+        except Exception:
+            continue
+        if day >= reference_day:
+            candidates.append((day, row))
+    return min(candidates, key=lambda item: item[0]) if candidates else (None, None)
 
 
 def active_codes(state, lang):
@@ -1228,6 +1289,10 @@ def rotation_reset_keep_names(state):
     fresh["attendance"] = deepcopy(state.get("attendance", {}))
     fresh["attendance_ignored"] = deepcopy(state.get("attendance_ignored", []))
     fresh["auth_security"] = deepcopy(state.get("auth_security", {}))
+    fresh["whatsapp_contacts"] = {
+        c: deepcopy(state.get("whatsapp_contacts", {}).get(c, {"number": "", "consent": False, "enabled": False}))
+        for c in member_codes(fresh)
+    }
     fresh["audit_log"] = deepcopy(state.get("audit_log", []))
     return fresh
 
@@ -1375,6 +1440,7 @@ def add_member(state, lang, name):
     state.setdefault("names", {})[code] = name
     state.setdefault("active", {})[code] = True
     state.setdefault("people", {})[code] = blank_person()
+    state.setdefault("whatsapp_contacts", {})[code] = {"number": "", "consent": False, "enabled": False}
     return True, f"{name} a été ajouté et est actif.", code
 
 
@@ -1388,6 +1454,7 @@ def remove_member_permanently(state, code):
     state.get("names", {}).pop(code, None)
     state.get("active", {}).pop(code, None)
     state.get("people", {}).pop(code, None)
+    state.get("whatsapp_contacts", {}).pop(code, None)
     state.setdefault("reading_cycle_seen", {}).setdefault(lang, [])
     state["reading_cycle_seen"][lang] = [c for c in state["reading_cycle_seen"][lang] if c != code]
     state["reading_pairs"] = [p for p in state.get("reading_pairs", []) if code not in p]
@@ -1825,6 +1892,94 @@ with members_tab:
                     st.rerun()
             else:
                 st.error(message)
+
+        st.divider()
+        st.subheader("📱 WhatsApp des membres")
+        st.caption(
+            "Ces numéros sont visibles uniquement par l'administrateur principal. "
+            "Enregistrez le numéro au format international (ex. +226...) et activez les rappels uniquement avec l'accord du membre."
+        )
+        with st.expander("📱 Numéros et consentements", expanded=False):
+            wa_codes = member_codes(state)
+            with st.form("whatsapp_contacts_form"):
+                wa_inputs = {}
+                for lang, label in (("FR", "Francophones"), ("MO", "Mooréphones")):
+                    st.markdown(f"**{label}**")
+                    for code in member_codes(state, lang):
+                        contact = whatsapp_contact(state, code)
+                        st.markdown(f"**{state['names'].get(code, code)}**")
+                        number = st.text_input(
+                            "Numéro WhatsApp",
+                            value=contact.get("number", ""),
+                            placeholder="+226XXXXXXXX",
+                            key=f"wa_number_{code}",
+                            label_visibility="collapsed",
+                        )
+                        consent = st.checkbox(
+                            "Consentement reçu",
+                            value=bool(contact.get("consent", False)),
+                            key=f"wa_consent_{code}",
+                        )
+                        enabled = st.checkbox(
+                            "Rappels automatiques activés",
+                            value=bool(contact.get("enabled", False)),
+                            key=f"wa_enabled_{code}",
+                        )
+                        wa_inputs[code] = (number, consent, enabled)
+                    st.write("")
+                save_whatsapp = st.form_submit_button("💾 Enregistrer les numéros WhatsApp", type="primary")
+
+            if save_whatsapp:
+                errors = []
+                normalized = {}
+                for code, (number, consent, enabled) in wa_inputs.items():
+                    clean, err = normalize_whatsapp_number(number) if str(number).strip() else ("", "")
+                    if err:
+                        errors.append(f"{state['names'].get(code, code)} : {err}")
+                    if enabled and not clean:
+                        errors.append(f"{state['names'].get(code, code)} : ajoutez un numéro avant d'activer les rappels.")
+                    if enabled and not consent:
+                        errors.append(f"{state['names'].get(code, code)} : le consentement est requis pour activer les rappels.")
+                    normalized[code] = (clean, bool(consent), bool(enabled))
+
+                if errors:
+                    for err in errors:
+                        st.error(err)
+                else:
+                    for code, (clean, consent, enabled) in normalized.items():
+                        state.setdefault("whatsapp_contacts", {})[code] = {
+                            "number": clean,
+                            "consent": consent,
+                            "enabled": enabled,
+                        }
+                    st.session_state.liturgie_state = state
+                    if persist(show_success=False):
+                        st.success("Numéros WhatsApp et consentements enregistrés.")
+                        st.rerun()
+
+        with st.expander("🔎 Aperçu du prochain rappel", expanded=False):
+            next_day, next_row = next_published_sunday(state)
+            if not next_row:
+                st.info("Aucun dimanche futur publié dans l'historique pour préparer un rappel.")
+            else:
+                st.write(f"**Prochain dimanche publié : {next_day.strftime('%d/%m/%Y')}**")
+                preview_rows = []
+                codes = next_row.get("codes", {}) if isinstance(next_row.get("codes"), dict) else {}
+                ordered_codes = [codes.get(k) for k in ("r1", "r2", "f_mon", "m_mon", "f_ann", "m_ann")]
+                for code in ordered_codes:
+                    if not code:
+                        continue
+                    contact = whatsapp_contact(state, code)
+                    ready = bool(contact.get("number") and contact.get("consent") and contact.get("enabled"))
+                    preview_rows.append({
+                        "Membre": state.get("names", {}).get(code, code),
+                        "Rôle": whatsapp_role_for_code(next_row, code),
+                        "WhatsApp": "Prêt ✅" if ready else "À configurer",
+                    })
+                st.dataframe(preview_rows, use_container_width=True, hide_index=True)
+                st.caption(
+                    "Étape suivante : connecter l'application à la WhatsApp Business Platform (Cloud API) puis programmer les envois du mercredi et du vendredi à 18 h 30."
+                )
 
         st.divider()
         st.subheader("🗑️ Retirer définitivement un membre")
