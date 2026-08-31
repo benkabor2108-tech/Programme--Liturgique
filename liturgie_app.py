@@ -24,8 +24,9 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.31-persistant-supabase-v3.9.1-whatsapp-modeles"
+APP_VERSION = "2026.08.31-persistant-supabase-v3.9.2-guide-utilisation"
 TABLE_NAME = "liturgie_state"
+APP_PUBLIC_URL = "https://programme--liturgique-e39juey35cfq23az2qvup5.streamlit.app/"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
 ATTENDANCE_OPEN_TIME = time(18, 30)
@@ -2339,8 +2340,8 @@ if CAN_EDIT_ATTENDANCE and _current_attendance_open and not attendance_is_ignore
         _attendance_notice()
         st.session_state[_notice_key] = True
 
-home_tab, generate_tab, members_tab, attendance_tab, history_tab = st.tabs(
-    ["🏠 Accueil", "✨ Générer", "👥 Membres", "📋 Présences", "🕘 Historique"]
+home_tab, guide_tab, generate_tab, members_tab, attendance_tab, history_tab = st.tabs(
+    ["🏠 Accueil", "ℹ️ Guide", "✨ Générer", "👥 Membres", "📋 Présences", "🕘 Historique"]
 )
 
 with home_tab:
@@ -2372,6 +2373,85 @@ with home_tab:
             st.session_state.last_rows = []
             st.rerun()
         st.error(message)
+
+
+with guide_tab:
+    st.header("ℹ️ Guide d'utilisation")
+    st.write(
+        "Cette application facilite l'organisation, la programmation et le suivi du service "
+        "liturgique des lecteurs francophones et mooréphones."
+    )
+
+    st.subheader("🔗 Lien officiel à conserver et à transmettre")
+    st.code(APP_PUBLIC_URL, language=None)
+    st.link_button("Ouvrir le lien officiel", APP_PUBLIC_URL, use_container_width=True)
+    st.caption(
+        "Le même lien reste valable après les mises à jour de l'application. "
+        "Il peut être enregistré dans les favoris du téléphone."
+    )
+
+    st.subheader("👁️ Consultation et droits d'accès")
+    st.write(
+        "L'application s'ouvre par défaut en mode « Consultation uniquement ». "
+        "Les membres peuvent consulter les programmes sans modifier les données. "
+        "Les fonctions de gestion restent réservées aux administrateurs autorisés."
+    )
+
+    st.subheader("📖 Programmation liturgique")
+    st.write(
+        "La programmation prend en compte les membres francophones et mooréphones, "
+        "les disponibilités, les présences aux répétitions et les règles de rotation. "
+        "Elle répartit notamment la 1re lecture, la 2e lecture, la Monition/Prière universelle "
+        "et les Annonces."
+    )
+    st.info(
+        "L'historique est conservé afin de favoriser une rotation équitable. "
+        "Une absence temporaire n'efface pas le parcours du membre : lorsqu'il redevient actif, "
+        "il reprend sa rotation."
+    )
+
+    st.subheader("📱 Rappels WhatsApp")
+    st.markdown(
+        """
+**Mercredi à 18 h 30 — Premier rappel**  
+Le message indique au membre la date de la célébration et le service qui lui est confié,
+avec une demande de confirmation de réception.
+
+**Vendredi à 18 h 30 — Deuxième rappel**  
+Un second message rappelle le service prévu afin que le membre puisse prendre les dispositions
+nécessaires et être ponctuel.
+"""
+    )
+    st.warning(
+        "Mode actuel : l'application prépare le message et ouvre WhatsApp, mais l'envoi final "
+        "reste manuel. Le responsable doit encore appuyer sur « Envoyer » dans WhatsApp."
+    )
+
+    st.subheader("🤖 Automatisation future")
+    st.write(
+        "L'application est techniquement préparée pour une automatisation complète des rappels. "
+        "Cette évolution nécessitera un accès officiel à WhatsApp Business API, des modèles "
+        "de messages approuvés et un ordonnanceur externe fiable pour déclencher les envois "
+        "aux heures prévues."
+    )
+    st.success(
+        "Sécurité actuelle : l'automatisation complète est désactivée. "
+        "Aucun rappel WhatsApp ne peut partir automatiquement à l'insu du responsable."
+    )
+
+    st.subheader("🙏 Pourquoi cette application est importante")
+    st.write(
+        "Elle aide à réduire les oublis, améliorer la communication, conserver un historique fiable, "
+        "répartir plus équitablement les services et donner à chaque lecteur le temps nécessaire "
+        "pour préparer son service de la Parole de Dieu."
+    )
+
+    st.subheader("🔐 Bonne pratique de sécurité")
+    st.write(
+        "Le lien public de consultation peut être communiqué aux membres concernés. "
+        "En revanche, les mots de passe administrateurs, les clés techniques, les jetons d'accès "
+        "et autres informations confidentielles ne doivent jamais être partagés."
+    )
 
 with members_tab:
     st.subheader("👥 Membres")
