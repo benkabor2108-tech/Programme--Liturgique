@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.31-persistant-supabase-v3.9.2-guide-utilisation"
+APP_VERSION = "2026.08.31-persistant-supabase-v3.9.3-partage-qr"
 TABLE_NAME = "liturgie_state"
 APP_PUBLIC_URL = "https://programme--liturgique-e39juey35cfq23az2qvup5.streamlit.app/"
 AELF_API_BASE = "https://api.aelf.org/v1"
@@ -2385,10 +2385,40 @@ with guide_tab:
     st.subheader("🔗 Lien officiel à conserver et à transmettre")
     st.code(APP_PUBLIC_URL, language=None)
     st.link_button("Ouvrir le lien officiel", APP_PUBLIC_URL, use_container_width=True)
+
+    share_text = (
+        "Bonjour 🙏\n\n"
+        "Voici le lien officiel de l'application Programme liturgique :\n"
+        f"{APP_PUBLIC_URL}\n\n"
+        "Vous pouvez conserver ce lien dans vos favoris pour consulter les programmations."
+    )
+    whatsapp_share_url = f"https://wa.me/?text={quote(share_text)}"
+    st.link_button(
+        "📤 Partager l'application sur WhatsApp",
+        whatsapp_share_url,
+        use_container_width=True,
+    )
+
     st.caption(
         "Le même lien reste valable après les mises à jour de l'application. "
-        "Il peut être enregistré dans les favoris du téléphone."
+        "Il peut être enregistré dans les favoris du téléphone. "
+        "L'icône de copie à droite du lien permet également de le copier rapidement."
     )
+
+    with st.expander("📷 QR code de l'application", expanded=False):
+        st.write(
+            "Un membre peut scanner ce QR code avec l'appareil photo de son téléphone "
+            "pour ouvrir directement l'application."
+        )
+        qr_url = (
+            "https://api.qrserver.com/v1/create-qr-code/"
+            f"?size=320x320&data={quote(APP_PUBLIC_URL, safe='')}"
+        )
+        st.image(qr_url, caption="QR code — Programme liturgique", width=320)
+        st.caption(
+            "Le QR code contient uniquement le lien public de l'application. "
+            "Il ne contient aucun mot de passe ni aucune donnée confidentielle."
+        )
 
     st.subheader("👁️ Consultation et droits d'accès")
     st.write(
