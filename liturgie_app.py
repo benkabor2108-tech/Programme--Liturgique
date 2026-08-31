@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.31-persistant-supabase-v3.9.0-whatsapp-automation-ready"
+APP_VERSION = "2026.08.31-persistant-supabase-v3.9.1-whatsapp-modeles"
 TABLE_NAME = "liturgie_state"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
@@ -52,6 +52,23 @@ MONTHS = [
     "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
     "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
 ]
+
+DEFAULT_WHATSAPP_TEMPLATES = {
+    "mercredi": (
+        "Bonjour {nom},\n\n"
+        "Premier rappel pour le dimanche {date}.\n"
+        "Vous assurerez : {role}.\n\n"
+        "Merci de bien vouloir confirmer la réception de ce message.\n"
+        "Que Dieu vous bénisse dans ce service. 🙏"
+    ),
+    "vendredi": (
+        "Bonjour {nom},\n\n"
+        "Deuxième rappel pour ce dimanche {date}.\n"
+        "Votre service prévu est : {role}.\n\n"
+        "Merci de prendre les dispositions nécessaires pour être à l’heure.\n"
+        "Que Dieu vous accompagne dans ce service. 🙏"
+    ),
+}
 
 DEFAULT_NAMES = {
     "F1": "Mme Nacoulma",
@@ -121,6 +138,7 @@ def initial_state():
         "attendance_ignored": [],
         "auth_security": {},
         "whatsapp_contacts": {code: {"number": "", "consent": False, "enabled": False} for code in FR + MO},
+        "whatsapp_templates": deepcopy(DEFAULT_WHATSAPP_TEMPLATES),
         "whatsapp_send_log": {},
         "audit_log": [],
     }
@@ -174,6 +192,7 @@ def normalize_state(raw):
         "attendance_ignored": [],
         "auth_security": {},
         "whatsapp_contacts": {},
+        "whatsapp_templates": deepcopy(DEFAULT_WHATSAPP_TEMPLATES),
         "whatsapp_send_log": {},
         "audit_log": [],
     }
@@ -182,6 +201,10 @@ def normalize_state(raw):
     raw_active = raw.get("active", {}) if isinstance(raw.get("active"), dict) else {}
     raw_people = raw.get("people", {}) if isinstance(raw.get("people"), dict) else {}
     raw_whatsapp = raw.get("whatsapp_contacts", {}) if isinstance(raw.get("whatsapp_contacts"), dict) else {}
+    raw_templates = raw.get("whatsapp_templates", {}) if isinstance(raw.get("whatsapp_templates"), dict) else {}
+    for kind in ("mercredi", "vendredi"):
+        candidate = str(raw_templates.get(kind, "")).strip()
+        state["whatsapp_templates"][kind] = candidate or DEFAULT_WHATSAPP_TEMPLATES[kind]
 
     for code in member_codes(state):
         state["names"][code] = str(raw_names.get(code) or DEFAULT_NAMES.get(code) or code).strip()
@@ -606,14 +629,110 @@ def whatsapp_click_to_chat_url(number, message):
     return f"https://wa.me/{digits}?text={quote(str(message), safe='')}"
 
 
-def whatsapp_reminder_message(name, sunday, role, reminder_kind="mercredi"):
-    """Message réutilisable aujourd'hui en manuel et plus tard avec la Cloud API."""
-    prefix = "Deuxième rappel" if reminder_kind == "vendredi" else "Rappel"
+def whatsapp_reminder_message(state, name, sunday, role, reminder_kind="mercredi"):
+    """Construit le message à partir du modèle officiel enregistré."""
+    templates = state.get("whatsapp_templates", {}) if isinstance(state.get("whatsapp_templates"), dict) else {}
+    template = str(templates.get(reminder_kind, "")).strip() or DEFAULT_WHATSAPP_TEMPLATES[reminder_kind]
     return (
-        f"Bonjour {name},\n\n"
-        f"{prefix} pour le dimanche {sunday.strftime('%d/%m/%Y')} : "
-        f"vous êtes programmé(e) pour {role}.\n\n"
-        "Merci de confirmer la bonne réception. 🙏"
+        template
+        .replace("{nom}", str(name))
+        .replace("{date}", sunday.strftime("%d/%m/%Y"))
+        .replace("{role}", str(role))
+    )
+
+
+def validate_whatsapp_template(template):
+    required = ("{nom}", "{date}", "{role}")
+    missing = [placeholder for placeholder in required if placeholder not in str(template)]
+    return missing
+
+
+def render_whatsapp_template_editor(state):
+    st.subheader("✍️ Modèles officiels de rappel")
+    st.caption(
+        "Seul l'administrateur principal peut modifier ces textes. "
+        "Conservez obligatoirement les variables {nom}, {date} et {role} : "
+        "elles sont remplacées automatiquement lors de la préparation du message."
+    )
+
+    current = state.get("whatsapp_templates", {}) if isinstance(state.get("whatsapp_templates"), dict) else {}
+    wednesday = str(current.get("mercredi", "")).strip() or DEFAULT_WHATSAPP_TEMPLATES["mercredi"]
+    friday = str(current.get("vendredi", "")).strip() or DEFAULT_WHATSAPP_TEMPLATES["vendredi"]
+
+    with st.form("whatsapp_templates_form"):
+        edited_wednesday = st.text_area(
+            "Mercredi — premier rappel",
+            value=wednesday,
+            height=220,
+            key="wa_template_wednesday",
+        )
+        edited_friday = st.text_area(
+            "Vendredi — deuxième rappel",
+            value=friday,
+            height=220,
+            key="wa_template_friday",
+        )
+        save_templates = st.form_submit_button("💾 Enregistrer les modèles", type="primary")
+
+    if save_templates:
+        errors = []
+        for label, candidate in (
+            ("Mercredi", edited_wednesday),
+            ("Vendredi", edited_friday),
+        ):
+            missing = validate_whatsapp_template(candidate)
+            if missing:
+                errors.append(f"{label} : variable(s) manquante(s) : {', '.join(missing)}")
+            if not str(candidate).strip():
+                errors.append(f"{label} : le message ne peut pas être vide.")
+
+        if errors:
+            for error in errors:
+                st.error(error)
+        else:
+            state["whatsapp_templates"] = {
+                "mercredi": str(edited_wednesday).strip(),
+                "vendredi": str(edited_friday).strip(),
+            }
+            state.setdefault("audit_log", []).append({
+                "type": "whatsapp_templates_updated",
+                "timestamp": now_ouaga().isoformat(),
+                "actor": "Administrateur principal",
+            })
+            st.session_state.liturgie_state = state
+            if persist(show_success=False):
+                st.success("Modèles WhatsApp enregistrés.")
+                st.rerun()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("↩️ Restaurer le modèle du mercredi", use_container_width=True):
+            state.setdefault("whatsapp_templates", {})["mercredi"] = DEFAULT_WHATSAPP_TEMPLATES["mercredi"]
+            st.session_state.liturgie_state = state
+            if persist(show_success=False):
+                st.rerun()
+    with col2:
+        if st.button("↩️ Restaurer le modèle du vendredi", use_container_width=True):
+            state.setdefault("whatsapp_templates", {})["vendredi"] = DEFAULT_WHATSAPP_TEMPLATES["vendredi"]
+            st.session_state.liturgie_state = state
+            if persist(show_success=False):
+                st.rerun()
+
+    st.markdown("**Aperçu avec des exemples**")
+    example_date = date(2026, 10, 4)
+    st.text_area(
+        "Aperçu mercredi",
+        value=whatsapp_reminder_message(state, "Mme EXEMPLE", example_date, "1re lecture — Français", "mercredi"),
+        height=190,
+        disabled=True,
+        key="wa_template_preview_wednesday",
+    )
+    st.text_area(
+        "Aperçu vendredi",
+        value=whatsapp_reminder_message(state, "Mme EXEMPLE", example_date, "1re lecture — Français", "vendredi"),
+        height=190,
+        disabled=True,
+        key="wa_template_preview_friday",
     )
 
 
@@ -751,7 +870,7 @@ def render_whatsapp_reminder_sender(state):
 
     st.markdown("**Messages prêts à envoyer**")
     for code, name, role, number, sent in ready_items:
-        message = whatsapp_reminder_message(name, next_day, role, reminder_kind)
+        message = whatsapp_reminder_message(state, name, next_day, role, reminder_kind)
         url = whatsapp_click_to_chat_url(number, message)
         send_key = whatsapp_send_key(next_day, reminder_kind, code)
         send_info = log.get(send_key, {}) if isinstance(log.get(send_key), dict) else {}
@@ -1739,6 +1858,7 @@ def rotation_reset_keep_names(state):
         c: deepcopy(state.get("whatsapp_contacts", {}).get(c, {"number": "", "consent": False, "enabled": False}))
         for c in member_codes(fresh)
     }
+    fresh["whatsapp_templates"] = deepcopy(state.get("whatsapp_templates", DEFAULT_WHATSAPP_TEMPLATES))
     fresh["whatsapp_send_log"] = deepcopy(state.get("whatsapp_send_log", {}))
     fresh["audit_log"] = deepcopy(state.get("audit_log", []))
     return fresh
@@ -2403,6 +2523,9 @@ with members_tab:
                     if persist(show_success=False):
                         st.success("Numéros WhatsApp et consentements enregistrés.")
                         st.rerun()
+
+        with st.expander("✍️ Modèles officiels des rappels", expanded=False):
+            render_whatsapp_template_editor(state)
 
         with st.expander("📲 Préparer les rappels WhatsApp", expanded=False):
             render_whatsapp_reminder_sender(state)
