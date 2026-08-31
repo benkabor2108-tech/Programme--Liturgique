@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.31-persistant-supabase-v3.9.3-partage-qr"
+APP_VERSION = "2026.08.31-persistant-supabase-v3.9.4-multi-adjoints"
 TABLE_NAME = "liturgie_state"
 APP_PUBLIC_URL = "https://programme--liturgique-e39juey35cfq23az2qvup5.streamlit.app/"
 AELF_API_BASE = "https://api.aelf.org/v1"
@@ -752,7 +752,8 @@ def whatsapp_actor_label():
     if globals().get("IS_ADMIN", False):
         return "Administrateur principal"
     if globals().get("IS_ADJOINT", False):
-        return "Administrateur adjoint"
+        name = str(st.session_state.get("adjoint_name", "")).strip()
+        return f"Administrateur adjoint — {name}" if name else "Administrateur adjoint"
     return "Consultation"
 
 
@@ -1020,7 +1021,12 @@ def ensure_attendance_sheet(state, saturday, actor="system"):
 
 
 def attendance_actor_label(role):
-    return "Administrateur principal" if role == "principal" else "Administrateur adjoint" if role == "adjoint" else "Système"
+    if role == "principal":
+        return "Administrateur principal"
+    if role == "adjoint":
+        name = str(st.session_state.get("adjoint_name", "")).strip()
+        return f"Administrateur adjoint — {name}" if name else "Administrateur adjoint"
+    return "Système"
 
 
 def save_attendance_sheet(state, saturday, statuses, actor_role, reason=""):
@@ -2094,44 +2100,182 @@ def auth_security(state):
     return state["auth_security"]
 
 
-def adjoint_password_hash(state):
-    return str(auth_security(state).get("adjoint_password_hash", "")).strip()
+def adjoint_accounts(state):
+    """Retourne le registre des administrateurs adjoints.
+
+    Migration automatique :
+    - si l'ancienne version ne possédait qu'un seul adjoint, son accès est conservé ;
+    - les nouveaux adjoints disposent chacun de leur propre compte et mot de passe.
+    """
+    security = auth_security(state)
+    accounts = security.get("adjoints")
+    if not isinstance(accounts, dict):
+        accounts = {}
+        security["adjoints"] = accounts
+
+    # Migration silencieuse de l'ancien compte unique.
+    if not accounts:
+        legacy_hash = str(security.get("adjoint_password_hash", "")).strip()
+        legacy_configured = bool(legacy_hash or configured_password("adjoint"))
+        if legacy_configured:
+            accounts["adjoint_1"] = {
+                "name": "Administrateur adjoint 1",
+                "password_hash": legacy_hash,
+                "legacy_secret": bool(not legacy_hash and configured_password("adjoint")),
+                "must_change_password": bool(security.get("adjoint_must_change_password", False)),
+                "auth_version": int(security.get("adjoint_auth_version", 0) or 0),
+                "active": True,
+                "created_at": str(security.get("adjoint_password_updated_at", "") or now_ouaga().isoformat()),
+                "updated_at": str(security.get("adjoint_password_updated_at", "") or now_ouaga().isoformat()),
+            }
+    return accounts
 
 
-def adjoint_auth_version(state):
-    try:
-        return int(auth_security(state).get("adjoint_auth_version", 0))
-    except Exception:
-        return 0
+def normalize_adjoint_account(record):
+    if not isinstance(record, dict):
+        record = {}
+    return {
+        "name": str(record.get("name", "")).strip(),
+        "password_hash": str(record.get("password_hash", "")).strip(),
+        "legacy_secret": bool(record.get("legacy_secret", False)),
+        "must_change_password": bool(record.get("must_change_password", False)),
+        "auth_version": int(record.get("auth_version", 0) or 0),
+        "active": bool(record.get("active", True)),
+        "created_at": str(record.get("created_at", "")).strip(),
+        "updated_at": str(record.get("updated_at", "")).strip(),
+    }
 
 
-def adjoint_must_change_password(state):
-    return bool(auth_security(state).get("adjoint_must_change_password", False))
+def active_adjoint_accounts(state):
+    result = {}
+    for account_id, raw in adjoint_accounts(state).items():
+        record = normalize_adjoint_account(raw)
+        if record["active"] and record["name"]:
+            result[str(account_id)] = record
+    return result
 
 
-def verify_role_password(role, password, state):
-    """Vérifie le mot de passe sans jamais exposer le hash ni le secret."""
+def adjoint_account(state, account_id):
+    raw = adjoint_accounts(state).get(str(account_id))
+    if not isinstance(raw, dict):
+        return None
+    return normalize_adjoint_account(raw)
+
+
+def adjoint_display_name(state, account_id):
+    record = adjoint_account(state, account_id)
+    return record["name"] if record else ""
+
+
+def adjoint_auth_version(state, account_id=None):
+    account_id = str(account_id or st.session_state.get("adjoint_id", "")).strip()
+    record = adjoint_account(state, account_id)
+    return int(record["auth_version"]) if record else 0
+
+
+def adjoint_must_change_password(state, account_id=None):
+    account_id = str(account_id or st.session_state.get("adjoint_id", "")).strip()
+    record = adjoint_account(state, account_id)
+    return bool(record["must_change_password"]) if record else False
+
+
+def verify_adjoint_password(state, account_id, password):
+    record = adjoint_account(state, account_id)
+    if not record or not record["active"]:
+        return False
+    if record["password_hash"]:
+        return verify_password_hash(password, record["password_hash"])
+    if record["legacy_secret"]:
+        expected = configured_password("adjoint")
+        return bool(expected) and hmac.compare_digest(str(password), expected)
+    return False
+
+
+def verify_role_password(role, password, state, account_id=None):
+    """Vérifie un accès sans jamais exposer le hash ni les secrets."""
     if role == "adjoint":
-        stored = adjoint_password_hash(state)
-        if stored:
-            return verify_password_hash(password, stored)
+        return verify_adjoint_password(state, account_id, password)
     expected = configured_password(role)
     return bool(expected) and hmac.compare_digest(str(password), expected)
 
 
-def set_adjoint_password(state, new_password, actor, must_change=False):
-    security = auth_security(state)
-    security["adjoint_password_hash"] = hash_password(new_password)
-    security["adjoint_must_change_password"] = bool(must_change)
-    security["adjoint_password_updated_at"] = now_ouaga().isoformat()
-    security["adjoint_password_updated_by"] = str(actor)
-    security["adjoint_auth_version"] = adjoint_auth_version(state) + 1
+def set_adjoint_password(state, account_id, new_password, actor, must_change=False):
+    accounts = adjoint_accounts(state)
+    account_id = str(account_id)
+    if account_id not in accounts:
+        raise KeyError("Compte adjoint introuvable.")
+    record = normalize_adjoint_account(accounts[account_id])
+    record["password_hash"] = hash_password(new_password)
+    record["legacy_secret"] = False
+    record["must_change_password"] = bool(must_change)
+    record["updated_at"] = now_ouaga().isoformat()
+    record["auth_version"] = int(record.get("auth_version", 0)) + 1
+    accounts[account_id] = record
     state.setdefault("audit_log", []).append({
         "at": now_ouaga().isoformat(),
         "actor": str(actor),
         "action": "adjoint_password_reset" if must_change else "adjoint_password_change",
+        "adjoint_id": account_id,
+        "adjoint_name": record["name"],
     })
-    return int(security["adjoint_auth_version"])
+    return int(record["auth_version"])
+
+
+def create_adjoint_account(state, name, actor="Administrateur principal"):
+    clean_name = " ".join(str(name).split()).strip()
+    if len(clean_name) < 2:
+        return False, "Renseignez le nom de l'administrateur adjoint.", None, None
+
+    accounts = adjoint_accounts(state)
+    existing_names = {
+        normalize_adjoint_account(rec)["name"].casefold()
+        for rec in accounts.values()
+        if normalize_adjoint_account(rec)["name"]
+    }
+    if clean_name.casefold() in existing_names:
+        return False, "Un administrateur adjoint porte déjà ce nom.", None, None
+
+    account_id = f"adjoint_{secrets.token_hex(4)}"
+    temporary = provisional_password()
+    stamp = now_ouaga().isoformat()
+    accounts[account_id] = {
+        "name": clean_name,
+        "password_hash": hash_password(temporary),
+        "legacy_secret": False,
+        "must_change_password": True,
+        "auth_version": 1,
+        "active": True,
+        "created_at": stamp,
+        "updated_at": stamp,
+    }
+    state.setdefault("audit_log", []).append({
+        "at": stamp,
+        "actor": str(actor),
+        "action": "adjoint_created",
+        "adjoint_id": account_id,
+        "adjoint_name": clean_name,
+    })
+    return True, "Administrateur adjoint créé.", account_id, temporary
+
+
+def set_adjoint_active(state, account_id, active, actor="Administrateur principal"):
+    accounts = adjoint_accounts(state)
+    account_id = str(account_id)
+    if account_id not in accounts:
+        return False, "Compte adjoint introuvable."
+    record = normalize_adjoint_account(accounts[account_id])
+    record["active"] = bool(active)
+    record["auth_version"] = int(record.get("auth_version", 0)) + 1
+    record["updated_at"] = now_ouaga().isoformat()
+    accounts[account_id] = record
+    state.setdefault("audit_log", []).append({
+        "at": now_ouaga().isoformat(),
+        "actor": str(actor),
+        "action": "adjoint_reactivated" if active else "adjoint_deactivated",
+        "adjoint_id": account_id,
+        "adjoint_name": record["name"],
+    })
+    return True, "Accès réactivé." if active else "Accès adjoint désactivé."
 
 
 def provisional_password(length=10):
@@ -2165,10 +2309,22 @@ def admin_mode():
     return principal_mode()
 
 
+def current_adjoint_label():
+    name = str(st.session_state.get("adjoint_name", "")).strip()
+    return f"Administrateur adjoint — {name}" if name else "Administrateur adjoint"
+
+
 def render_adjoint_self_service(state):
-    must_change = adjoint_must_change_password(state)
+    account_id = str(st.session_state.get("adjoint_id", "")).strip()
+    record = adjoint_account(state, account_id)
+    if not record:
+        st.error("Votre compte adjoint n'est plus disponible.")
+        return
+
+    must_change = bool(record["must_change_password"])
     if must_change:
         st.warning("🔑 Mot de passe provisoire : choisissez maintenant votre nouveau mot de passe.")
+
     with st.expander("🔑 Changer mon mot de passe", expanded=must_change):
         with st.form("adjoint_change_password_form", clear_on_submit=True):
             if not must_change:
@@ -2178,8 +2334,9 @@ def render_adjoint_self_service(state):
             new1 = st.text_input("Nouveau mot de passe", type="password", key="adjoint_new_password")
             new2 = st.text_input("Confirmer le nouveau mot de passe", type="password", key="adjoint_confirm_password")
             clicked = st.form_submit_button("💾 Enregistrer mon nouveau mot de passe")
+
         if clicked:
-            if not must_change and not verify_role_password("adjoint", current, state):
+            if not must_change and not verify_adjoint_password(state, account_id, current):
                 st.error("Le mot de passe actuel est incorrect.")
             elif len(str(new1)) < 8:
                 st.error("Le nouveau mot de passe doit contenir au moins 8 caractères.")
@@ -2190,116 +2347,258 @@ def render_adjoint_self_service(state):
             else:
                 version = set_adjoint_password(
                     state,
+                    account_id,
                     str(new1),
-                    actor="Administrateur adjoint",
+                    actor=current_adjoint_label(),
                     must_change=False,
                 )
                 st.session_state.adjoint_auth_version = version
                 st.session_state.liturgie_state = state
                 if persist(show_success=False):
-                    st.session_state.password_change_notice = "Mot de passe adjoint modifié avec succès."
+                    st.session_state.password_change_notice = "Votre mot de passe a été modifié avec succès."
                     st.rerun()
 
 
 def render_principal_adjoint_password_tools(state):
-    with st.expander("🔑 Réinitialiser le mot de passe de l'adjoint"):
+    with st.expander("👥 Gérer les administrateurs adjoints"):
         st.caption(
-            "À utiliser seulement si l'adjoint a oublié son mot de passe. "
-            "Un code provisoire sera créé ; à sa prochaine connexion, il devra choisir lui-même un nouveau mot de passe."
+            "Chaque adjoint possède son propre nom et son propre mot de passe. "
+            "Les actions réalisées dans les présences et les rappels WhatsApp sont enregistrées avec son nom."
         )
-        with st.form("principal_reset_adjoint_password_form"):
-            confirm = st.checkbox("Je confirme la réinitialisation du mot de passe de l'adjoint.")
-            clicked = st.form_submit_button("🔄 Créer un mot de passe provisoire")
-        if clicked:
-            if not confirm:
-                st.error("Cochez la confirmation avant la réinitialisation.")
+
+        accounts = adjoint_accounts(state)
+        rows = []
+        for account_id, raw in accounts.items():
+            rec = normalize_adjoint_account(raw)
+            rows.append({
+                "Nom": rec["name"],
+                "Accès": "Actif" if rec["active"] else "Désactivé",
+                "Mot de passe": "À changer" if rec["must_change_password"] else "Personnel",
+            })
+        if rows:
+            st.dataframe(rows, use_container_width=True, hide_index=True)
+        else:
+            st.info("Aucun administrateur adjoint n'est encore configuré.")
+
+        st.markdown("**Ajouter un adjoint**")
+        with st.form("principal_add_adjoint_form", clear_on_submit=True):
+            new_name = st.text_input(
+                "Nom de l'administrateur adjoint",
+                placeholder="Ex. Mme X / M. Y",
+                key="new_adjoint_name",
+            )
+            add_clicked = st.form_submit_button("➕ Ajouter cet adjoint")
+
+        if add_clicked:
+            ok, message, account_id, temporary = create_adjoint_account(state, new_name)
+            if not ok:
+                st.error(message)
             else:
-                temporary = provisional_password()
-                set_adjoint_password(
-                    state,
-                    temporary,
-                    actor="Administrateur principal",
-                    must_change=True,
-                )
                 st.session_state.liturgie_state = state
                 if persist(show_success=False):
-                    st.session_state.adjoint_temp_password = temporary
+                    st.session_state.adjoint_temp_credentials = {
+                        "id": account_id,
+                        "name": adjoint_display_name(state, account_id),
+                        "password": temporary,
+                    }
                     st.rerun()
-        temporary = st.session_state.get("adjoint_temp_password", "")
-        if temporary:
-            st.success("Mot de passe provisoire créé. Communiquez-le uniquement à l'administrateur adjoint.")
-            st.code(temporary, language=None)
-            st.caption("Ce code est affiché uniquement dans votre session d'administrateur principal.")
-            if st.button("🙈 Masquer le code provisoire", key="hide_adjoint_temp_password"):
-                st.session_state.pop("adjoint_temp_password", None)
+
+        temporary_info = st.session_state.get("adjoint_temp_credentials")
+        if isinstance(temporary_info, dict) and temporary_info.get("password"):
+            st.success(
+                f"Compte créé pour {temporary_info.get('name', 'l’adjoint')}. "
+                "Communiquez-lui ce code provisoire en privé."
+            )
+            st.code(str(temporary_info["password"]), language=None)
+            st.caption(
+                "À sa première connexion, l'adjoint devra créer son propre mot de passe. "
+                "Le code provisoire n'est affiché que dans votre session."
+            )
+            if st.button("🙈 Masquer le code provisoire", key="hide_multi_adjoint_temp_password"):
+                st.session_state.pop("adjoint_temp_credentials", None)
                 st.rerun()
+
+        accounts = adjoint_accounts(state)
+        if accounts:
+            st.markdown("**Gérer un adjoint existant**")
+            account_ids = list(accounts.keys())
+            selected_id = st.selectbox(
+                "Administrateur adjoint",
+                account_ids,
+                format_func=lambda aid: (
+                    f"{normalize_adjoint_account(accounts[aid])['name']} "
+                    f"({'actif' if normalize_adjoint_account(accounts[aid])['active'] else 'désactivé'})"
+                ),
+                key="principal_selected_adjoint",
+            )
+            selected = normalize_adjoint_account(accounts[selected_id])
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Réinitialiser son mot de passe", key="reset_selected_adjoint", use_container_width=True):
+                    temporary = provisional_password()
+                    set_adjoint_password(
+                        state,
+                        selected_id,
+                        temporary,
+                        actor="Administrateur principal",
+                        must_change=True,
+                    )
+                    st.session_state.liturgie_state = state
+                    if persist(show_success=False):
+                        st.session_state.adjoint_temp_credentials = {
+                            "id": selected_id,
+                            "name": selected["name"],
+                            "password": temporary,
+                        }
+                        st.rerun()
+
+            with col2:
+                action_label = "⛔ Désactiver son accès" if selected["active"] else "✅ Réactiver son accès"
+                if st.button(action_label, key="toggle_selected_adjoint", use_container_width=True):
+                    ok, message = set_adjoint_active(
+                        state,
+                        selected_id,
+                        not selected["active"],
+                    )
+                    if ok:
+                        st.session_state.liturgie_state = state
+                        if persist(show_success=False):
+                            st.session_state.adjoint_management_notice = message
+                            st.rerun()
+                    else:
+                        st.error(message)
+
+            notice = st.session_state.pop("adjoint_management_notice", None)
+            if notice:
+                st.success(notice)
+
+        st.info(
+            "La désactivation retire immédiatement l'accès de l'adjoint sans supprimer l'historique "
+            "de ses actions. Le principal conserve la gestion des membres, des numéros WhatsApp, "
+            "des modèles, des paramètres sensibles et des comptes adjoints."
+        )
 
 
 def render_admin_login(state):
-    """Authentification par session avec deux niveaux de droits et autonomie de l'adjoint."""
+    """Authentification par session : principal + plusieurs adjoints nominatifs."""
     with st.sidebar:
         st.markdown("### 🔐 Accès administrateur")
         role = current_role()
 
-        # Une réinitialisation par le principal invalide les anciennes sessions adjointes.
+        # Vérifier qu'une session adjoint est toujours valide.
         if role == "adjoint":
-            session_version = st.session_state.get("adjoint_auth_version", adjoint_auth_version(state))
-            if int(session_version) != adjoint_auth_version(state):
+            account_id = str(st.session_state.get("adjoint_id", "")).strip()
+            record = adjoint_account(state, account_id)
+            session_version = int(st.session_state.get("adjoint_auth_version", -1))
+
+            if (
+                not record
+                or not record["active"]
+                or session_version != int(record["auth_version"])
+            ):
                 st.session_state.auth_role = "consultation"
                 st.session_state.admin_authenticated = False
+                st.session_state.pop("adjoint_id", None)
+                st.session_state.pop("adjoint_name", None)
                 st.session_state.pop("adjoint_auth_version", None)
-                st.warning("Votre mot de passe a été réinitialisé. Reconnectez-vous avec le nouveau code provisoire.")
+                st.warning(
+                    "Votre accès adjoint a été modifié ou désactivé. "
+                    "Reconnectez-vous avec vos identifiants autorisés."
+                )
                 role = "consultation"
+            else:
+                st.session_state.adjoint_name = record["name"]
 
         if role in ("principal", "adjoint"):
             if role == "principal":
                 st.success("Mode administrateur principal actif")
                 render_principal_adjoint_password_tools(state)
             else:
-                st.success("Mode administrateur adjoint actif")
-                st.caption("Droits limités : saisie de la feuille de présence en cours. Les anciennes feuilles restent en lecture seule.")
+                st.success(f"{current_adjoint_label()} actif")
+                st.caption(
+                    "Droits limités : feuille de présence en cours et préparation/suivi "
+                    "des rappels WhatsApp. Les données sensibles restent réservées au principal."
+                )
                 if st.session_state.pop("password_change_notice", None):
                     st.success("Mot de passe modifié avec succès.")
                 render_adjoint_self_service(state)
+
             if st.button("🚪 Se déconnecter", key="admin_logout"):
                 st.session_state.auth_role = "consultation"
                 st.session_state.admin_authenticated = False
                 st.session_state.pop("admin_password_input", None)
+                st.session_state.pop("adjoint_id", None)
+                st.session_state.pop("adjoint_name", None)
                 st.session_state.pop("adjoint_auth_version", None)
                 st.rerun()
+
         else:
-            st.caption("Mode consultation. Connectez-vous uniquement si vous êtes autorisé à modifier des données.")
+            st.caption(
+                "Mode consultation. Connectez-vous uniquement si vous êtes autorisé à modifier des données."
+            )
             profile = st.radio(
                 "Profil",
                 ["Administrateur principal", "Administrateur adjoint"],
                 horizontal=False,
                 key="admin_profile_choice",
             )
+
+            selected_adjoint_id = None
+            if profile == "Administrateur adjoint":
+                accounts = active_adjoint_accounts(state)
+                if accounts:
+                    selected_adjoint_id = st.selectbox(
+                        "Votre nom",
+                        list(accounts.keys()),
+                        format_func=lambda aid: accounts[aid]["name"],
+                        key="adjoint_login_account",
+                    )
+                else:
+                    st.info("Aucun compte administrateur adjoint actif n'est configuré.")
+
             password = st.text_input(
                 "Mot de passe",
                 type="password",
                 key="admin_password_input",
             )
+
             if st.button("🔓 Se connecter", key="admin_login"):
-                wanted_role = "principal" if profile == "Administrateur principal" else "adjoint"
-                # Distinguer « non configuré » d'un mot de passe incorrect.
-                has_adjoint = bool(adjoint_password_hash(state) or configured_password("adjoint"))
-                has_principal = bool(configured_password("principal"))
-                configured = has_principal if wanted_role == "principal" else has_adjoint
-                if not configured:
-                    if wanted_role == "adjoint":
-                        st.error("Le mot de passe de l'administrateur adjoint n'est pas encore configuré.")
+                if profile == "Administrateur principal":
+                    if not configured_password("principal"):
+                        st.error(
+                            "Le mot de passe administrateur principal n'est pas encore configuré "
+                            "dans Streamlit Secrets."
+                        )
+                    elif verify_role_password("principal", password, state):
+                        st.session_state.auth_role = "principal"
+                        st.session_state.admin_authenticated = True
+                        st.session_state.pop("admin_password_input", None)
+                        st.rerun()
                     else:
-                        st.error("Le mot de passe administrateur principal n'est pas encore configuré dans Streamlit Secrets.")
-                elif verify_role_password(wanted_role, password, state):
-                    st.session_state.auth_role = wanted_role
-                    st.session_state.admin_authenticated = wanted_role == "principal"
-                    if wanted_role == "adjoint":
-                        st.session_state.adjoint_auth_version = adjoint_auth_version(state)
-                    st.session_state.pop("admin_password_input", None)
-                    st.rerun()
+                        st.error("Mot de passe incorrect.")
                 else:
-                    st.error("Mot de passe incorrect.")
+                    accounts = active_adjoint_accounts(state)
+                    if not accounts:
+                        st.error("Aucun administrateur adjoint actif n'est configuré.")
+                    elif not selected_adjoint_id:
+                        st.error("Sélectionnez votre nom.")
+                    elif verify_role_password(
+                        "adjoint",
+                        password,
+                        state,
+                        account_id=selected_adjoint_id,
+                    ):
+                        record = adjoint_account(state, selected_adjoint_id)
+                        st.session_state.auth_role = "adjoint"
+                        st.session_state.admin_authenticated = False
+                        st.session_state.adjoint_id = selected_adjoint_id
+                        st.session_state.adjoint_name = record["name"]
+                        st.session_state.adjoint_auth_version = int(record["auth_version"])
+                        st.session_state.pop("admin_password_input", None)
+                        st.rerun()
+                    else:
+                        st.error("Mot de passe incorrect.")
 
 
 ensure_loaded()
@@ -2324,7 +2623,10 @@ st.caption(f"Version : {APP_VERSION}")
 if IS_ADMIN:
     st.success("🔐 Administrateur principal — modifications complètes autorisées")
 elif IS_ADJOINT:
-    st.success("🔐 Administrateur adjoint — droits limités aux présences en cours")
+    st.success(
+        f"🔐 {current_adjoint_label()} — droits limités aux présences en cours "
+        "et aux rappels WhatsApp"
+    )
 else:
     st.info("👁️ Consultation uniquement — aucune modification n'est autorisée sur cet appareil.")
 st.write("Programmation automatique — les codes techniques restent en arrière-plan, seuls les noms sont affichés.")
@@ -2387,10 +2689,17 @@ with guide_tab:
     st.link_button("Ouvrir le lien officiel", APP_PUBLIC_URL, use_container_width=True)
 
     share_text = (
-        "Bonjour 🙏\n\n"
-        "Voici le lien officiel de l'application Programme liturgique :\n"
+        "Bonjour à tous 🙏\n\n"
+        "Afin de faciliter l’organisation de notre service liturgique, "
+        "l’application Programme liturgique est désormais disponible.\n\n"
+        "Elle permet notamment de consulter les programmations, de suivre l’organisation "
+        "des services et de faciliter les rappels des personnes programmées.\n\n"
+        "🔗 Lien officiel :\n"
         f"{APP_PUBLIC_URL}\n\n"
-        "Vous pouvez conserver ce lien dans vos favoris pour consulter les programmations."
+        "Vous pouvez conserver ce lien dans vos favoris. Un QR code est également disponible "
+        "dans l’onglet Guide pour faciliter l’accès et le partage de l’application.\n\n"
+        "Merci de privilégier le mode Consultation et de ne pas partager les accès administrateurs.\n\n"
+        "Merci à chacun pour sa disponibilité et son engagement au service de la Parole de Dieu. 🙏"
     )
     whatsapp_share_url = f"https://wa.me/?text={quote(share_text)}"
     st.link_button(
@@ -2676,7 +2985,7 @@ with members_tab:
         st.divider()
         st.subheader("📲 Rappels WhatsApp")
         st.caption(
-            "L'administrateur adjoint peut préparer et ouvrir les rappels des membres programmés. "
+            "Les administrateurs adjoints autorisés peuvent préparer et ouvrir les rappels des membres programmés. "
             "Les numéros de téléphone restent masqués et ne sont pas modifiables ici."
         )
         render_whatsapp_reminder_sender(state)
