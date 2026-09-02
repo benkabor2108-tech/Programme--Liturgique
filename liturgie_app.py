@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.08.31-persistant-supabase-v3.9.4-multi-adjoints"
+APP_VERSION = "2026.09.01-persistant-supabase-v3.9.5-presences-cycle15"
 TABLE_NAME = "liturgie_state"
 APP_PUBLIC_URL = "https://programme--liturgique-e39juey35cfq23az2qvup5.streamlit.app/"
 AELF_API_BASE = "https://api.aelf.org/v1"
@@ -32,7 +32,7 @@ APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
 ATTENDANCE_OPEN_TIME = time(18, 30)
 ATTENDANCE_CLOSE_TIME = time(23, 59, 59)
 ATTENDANCE_MIN_COUNT = 2
-ATTENDANCE_MAX_J = 2  # 3 J ou plus = non éligible le mois suivant.
+ATTENDANCE_MAX_J = 2  # 3 J ou plus = non éligible pour le mois programmé.
 AELF_ZONES = {
     "Calendrier romain": "romain",
     "Afrique du Nord": "afrique",
@@ -984,6 +984,33 @@ def attendance_sheets_for_month(state, year, month):
     return sorted(result, key=lambda item: item[0])
 
 
+def attendance_reference_period(target_year, target_month):
+    """Période de présence utilisée pour programmer un mois donné.
+
+    Exemple : pour programmer octobre, on utilise le cycle qui se clôt le
+    15 septembre. Afin qu'une feuille datée exactement du 15 ne soit jamais
+    comptée deux fois, elle appartient au cycle qui se termine ce 15 :
+    la période technique va donc du 16 du mois antérieur au 15 inclus.
+    """
+    end_year, end_month = previous_month(target_year, target_month)
+    start_year, start_month = previous_month(end_year, end_month)
+    start_day = date(start_year, start_month, 16)
+    end_day = date(end_year, end_month, 15)
+    return start_day, end_day
+
+
+def attendance_sheets_for_period(state, start_day, end_day):
+    result = []
+    for key, sheet in (state.get("attendance", {}) or {}).items():
+        try:
+            d = date.fromisoformat(str(sheet.get("date") or key))
+        except Exception:
+            continue
+        if start_day <= d <= end_day:
+            result.append((d, sheet))
+    return sorted(result, key=lambda item: item[0])
+
+
 def new_attendance_sheet(state, saturday, actor="system"):
     codes = [c for c in member_codes(state) if state.get("active", {}).get(c, True)]
     stamp = now_ouaga().isoformat()
@@ -1101,11 +1128,18 @@ def restore_attendance_sheet(state, saturday, actor_role):
 
 
 def attendance_eligibility(state, target_year, target_month):
-    prev_year, prev_month = previous_month(target_year, target_month)
-    sheets = attendance_sheets_for_month(state, prev_year, prev_month)
-    # Pour éviter de pénaliser un mois ancien ou incomplet lors de la migration,
-    # la règle automatique s'active à partir de 2 feuilles de présence enregistrées.
-    enforced = len(sheets) >= 2
+    start_day, end_day = attendance_reference_period(target_year, target_month)
+    sheets = attendance_sheets_for_period(state, start_day, end_day)
+
+    # Le filtre n'est définitif qu'une fois le cycle clôturé le 15.
+    today = now_ouaga().date()
+    period_closed = today >= end_day
+
+    # Pour éviter de pénaliser une période ancienne ou incomplète, la règle
+    # automatique s'active seulement si le cycle est clôturé et qu'au moins
+    # 2 feuilles de présence ont été enregistrées dans ce cycle.
+    enforced = period_closed and len(sheets) >= 2
+
     details = {}
     for code in member_codes(state):
         p_count = j_count = a_count = 0
@@ -1117,18 +1151,26 @@ def attendance_eligibility(state, target_year, target_month):
                 j_count += 1
             elif status == "A":
                 a_count += 1
+
         counted = p_count + j_count
         eligible = True
-        reason = "Règle non activée : moins de 2 feuilles enregistrées."
-        if enforced:
-            if j_count >= 3:
-                eligible = False
-                reason = "3 absences justifiées (J) ou plus."
-            elif counted < ATTENDANCE_MIN_COUNT:
-                eligible = False
-                reason = f"Moins de {ATTENDANCE_MIN_COUNT} présences comptabilisées (P + J)."
-            else:
-                reason = "Critères de présence remplis."
+
+        if not period_closed:
+            reason = (
+                f"Cycle en cours jusqu'au {end_day.strftime('%d/%m/%Y')} : "
+                "éligibilité provisoire."
+            )
+        elif len(sheets) < 2:
+            reason = "Règle non activée : moins de 2 feuilles enregistrées dans le cycle."
+        elif j_count >= 3:
+            eligible = False
+            reason = "3 absences justifiées (J) ou plus."
+        elif counted < ATTENDANCE_MIN_COUNT:
+            eligible = False
+            reason = f"Moins de {ATTENDANCE_MIN_COUNT} présences comptabilisées (P + J)."
+        else:
+            reason = "Critères de présence remplis."
+
         details[code] = {
             "P": p_count,
             "J": j_count,
@@ -1137,10 +1179,12 @@ def attendance_eligibility(state, target_year, target_month):
             "eligible": eligible,
             "reason": reason,
         }
+
     return {
         "enforced": enforced,
-        "previous_year": prev_year,
-        "previous_month": prev_month,
+        "period_closed": period_closed,
+        "reference_start": start_day.isoformat(),
+        "reference_end": end_day.isoformat(),
         "sheet_count": len(sheets),
         "details": details,
     }
@@ -1483,7 +1527,7 @@ def generate_month(state, year, month, refs, seed):
     if len(programmable_codes(state, "FR", reference_day)) < 3 or len(programmable_codes(state, "MO", reference_day)) < 3:
         raise RuntimeError(
             "Il faut au moins 3 membres éligibles dans chaque langue pour respecter les fonctions sans cumul. "
-            "Vérifiez les statuts Actif/Absent et le bilan des présences du mois précédent."
+            "Vérifiez les statuts Actif/Absent et le bilan du cycle de présences clôturé le 15."
         )
 
     rows = []
@@ -2664,7 +2708,7 @@ with home_tab:
         "Règles actives : alternance FR/MO des 1re et 2e lectures ; alternance individuelle "
         "Lecture ↔ Monition/P.U. au prochain passage ; équité des intervalles ; binômes non figés ; "
         "annonces indépendantes et sans cumul de fonction le même dimanche. "
-        "Présences : P et J comptent ; P + J ≥ 2 pour le mois suivant ; 3 J ou plus = non éligible."
+        "Présences : cycle du 15 au 15 pour préparer le mois suivant ; P et J comptent ; P + J ≥ 2 ; 3 J ou plus = non éligible."
     )
 
     if st.button("🔄 Actualiser depuis Supabase"):
@@ -2747,6 +2791,14 @@ with guide_tab:
         "L'historique est conservé afin de favoriser une rotation équitable. "
         "Une absence temporaire n'efface pas le parcours du membre : lorsqu'il redevient actif, "
         "il reprend sa rotation."
+    )
+    st.markdown("**📋 Cycle des présences pour préparer le mois suivant**")
+    st.write(
+        "Afin de pouvoir établir le programme avant le début du mois, les présences sont évaluées "
+        "par cycle se clôturant le 15. Par exemple, le programme d'octobre est préparé à partir "
+        "du cycle de présences qui se termine le 15 septembre. Techniquement, une feuille datée "
+        "exactement du 15 appartient au cycle qui se clôt ce jour-là afin qu'elle ne soit jamais "
+        "comptée deux fois."
     )
 
     st.subheader("📱 Rappels WhatsApp")
@@ -2995,7 +3047,7 @@ with attendance_tab:
     st.subheader("📋 Présences aux répétitions")
     st.caption(
         "P = Présent · J = absence justifiée (comptée comme présence) · "
-        "A = absence non justifiée. Pour être éligible le mois suivant : P + J ≥ 2 et moins de 3 J."
+        "A = absence non justifiée. Le programme du mois suivant utilise le cycle de présences clôturé le 15 : P + J ≥ 2 et moins de 3 J."
     )
 
     attendance_key = attendance_sheet_key(_current_saturday)
@@ -3083,11 +3135,24 @@ with attendance_tab:
             st.dataframe(attendance_sheet_rows(current_sheet), use_container_width=True, hide_index=True)
 
     st.divider()
-    st.markdown("### 📊 Bilan du mois et éligibilité")
-    target_year, target_month = next_month(_current_saturday.year, _current_saturday.month)
+    st.markdown("### 📊 Cycle de présences et éligibilité du mois suivant")
+
+    # Le bilan affiché concerne toujours le mois civil suivant la date actuelle,
+    # afin de pouvoir préparer le programme avant le début de ce mois.
+    target_year, target_month = next_month(_now.year, _now.month)
     eligibility, eligibility_rows = attendance_summary_rows(state, target_year, target_month)
-    prev_label = f"{MONTHS[eligibility['previous_month'] - 1]} {eligibility['previous_year']}"
+
+    reference_start = date.fromisoformat(eligibility["reference_start"])
+    reference_end = date.fromisoformat(eligibility["reference_end"])
     target_label = f"{MONTHS[target_month - 1]} {target_year}"
+    cycle_label = f"{reference_start.strftime('%d/%m/%Y')} → {reference_end.strftime('%d/%m/%Y')}"
+
+    st.info(
+        f"📅 Pour préparer le programme de {target_label}, le cycle de référence est "
+        f"{cycle_label}. Une présence datée exactement du 15 est rattachée au cycle "
+        "qui se clôt ce jour-là afin d'éviter tout double comptage."
+    )
+
     if eligibility["enforced"]:
         eligible_count = sum(
             1 for code, info in eligibility["details"].items()
@@ -3098,16 +3163,23 @@ with attendance_tab:
             if not info.get("eligible", True) and state.get("active", {}).get(code, True)
         )
         st.success(
-            f"Règle active pour la programmation de {target_label} : "
+            f"Cycle clôturé : règle active pour {target_label}. "
             f"{eligible_count} éligible(s), {ineligible_count} non éligible(s), "
-            f"sur {eligibility['sheet_count']} feuille(s) de {prev_label}."
+            f"sur {eligibility['sheet_count']} feuille(s) enregistrée(s)."
+        )
+    elif not eligibility.get("period_closed", False):
+        st.warning(
+            f"Cycle encore en cours jusqu'au {reference_end.strftime('%d/%m/%Y')}. "
+            f"{eligibility['sheet_count']} feuille(s) enregistrée(s) pour le moment. "
+            f"Le filtre d'éligibilité de {target_label} deviendra définitif après la clôture du 15."
         )
     else:
         st.warning(
-            f"Règle d'éligibilité non encore appliquée pour {target_label} : "
-            f"{eligibility['sheet_count']} feuille(s) enregistrée(s) en {prev_label}. "
-            "Il faut au moins 2 feuilles enregistrées pour activer automatiquement le filtre."
+            f"Cycle clôturé pour {target_label}, mais seulement "
+            f"{eligibility['sheet_count']} feuille(s) enregistrée(s). "
+            "Il faut au moins 2 feuilles pour activer automatiquement le filtre d'éligibilité."
         )
+
     with st.expander("Voir le détail P / J / A"):
         st.dataframe(eligibility_rows, use_container_width=True, hide_index=True)
 
