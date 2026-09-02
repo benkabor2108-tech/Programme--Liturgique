@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-APP_VERSION = "2026.09.01-persistant-supabase-v3.9.5-presences-cycle15"
+APP_VERSION = "2026.09.02-persistant-supabase-v3.9.6-correctif-cycle15"
 TABLE_NAME = "liturgie_state"
 APP_PUBLIC_URL = "https://programme--liturgique-e39juey35cfq23az2qvup5.streamlit.app/"
 AELF_API_BASE = "https://api.aelf.org/v1"
@@ -3321,7 +3321,11 @@ with generate_tab:
         month_sundays = sundays(year, month)
 
         attendance_check, attendance_check_rows = attendance_summary_rows(state, year, month)
-        prev_att_label = f"{MONTHS[attendance_check['previous_month'] - 1]} {attendance_check['previous_year']}"
+        reference_start = date.fromisoformat(attendance_check["reference_start"])
+        reference_end = date.fromisoformat(attendance_check["reference_end"])
+        attendance_cycle_label = (
+            f"{reference_start.strftime('%d/%m/%Y')} → {reference_end.strftime('%d/%m/%Y')}"
+        )
         if attendance_check["enforced"]:
             blocked = [
                 state.get("names", {}).get(code, code)
@@ -3329,7 +3333,7 @@ with generate_tab:
                 if not info.get("eligible", True) and state.get("active", {}).get(code, True)
             ]
             st.info(
-                f"📋 Éligibilité calculée à partir des présences de {prev_att_label}. "
+                f"📋 Éligibilité calculée à partir du cycle de présences {attendance_cycle_label}. "
                 f"{len(blocked)} membre(s) actif(s) seront automatiquement exclus de la programmation "
                 "si leurs critères de présence ne sont pas remplis."
             )
@@ -3342,12 +3346,13 @@ with generate_tab:
                     )
         elif attendance_check["sheet_count"] > 0:
             st.warning(
-                f"📋 Seulement {attendance_check['sheet_count']} feuille(s) de présence enregistrée(s) en {prev_att_label}. "
+                f"📋 Seulement {attendance_check['sheet_count']} feuille(s) de présence enregistrée(s) "
+                f"sur le cycle {attendance_cycle_label}. "
                 "Le filtre automatique d'éligibilité n'est pas encore activé (minimum : 2 feuilles)."
             )
         else:
             st.caption(
-                f"📋 Aucune feuille de présence enregistrée en {prev_att_label} : "
+                f"📋 Aucune feuille de présence enregistrée sur le cycle {attendance_cycle_label} : "
                 "la programmation utilise les statuts Actif/Absent habituels."
             )
 
