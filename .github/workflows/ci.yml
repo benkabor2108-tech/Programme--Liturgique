@@ -28,7 +28,9 @@ jobs:
         run: python -m pip check
 
       - name: Compile application
-        run: python -m py_compile liturgie_app.py
+        run: |
+          python -m py_compile liturgie_app.py
+          python -m py_compile scripts/whatsapp_automation.py
 
       - name: Verify key imports and versions
         run: |
