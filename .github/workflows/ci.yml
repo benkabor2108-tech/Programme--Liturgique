@@ -30,7 +30,17 @@ jobs:
       - name: Compile application
         run: |
           python -m py_compile liturgie_app.py
+          python -m py_compile liturgie_app_core.py
+          python -m py_compile liturgical_drafts.py
+          python -m py_compile liturgical_drafts_themes.py
+          python -m py_compile liturgical_drafts_source.py
+          python -m py_compile liturgical_drafts_schedule.py
+          python -m py_compile liturgical_drafts_word.py
+          python -m py_compile liturgical_drafts_ui.py
           python -m py_compile scripts/whatsapp_automation.py
+
+      - name: Run liturgical draft tests
+        run: python -m unittest tests/test_liturgical_drafts.py -v
 
       - name: Verify key imports and versions
         run: |
@@ -39,8 +49,10 @@ jobs:
           import streamlit
           import xlsxwriter
           import reportlab
+          import docx
           print("requests", requests.__version__)
           print("streamlit", streamlit.__version__)
           print("xlsxwriter", xlsxwriter.__version__)
           print("reportlab", reportlab.Version)
+          print("python-docx", docx.__version__)
           PY
