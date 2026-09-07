@@ -37,10 +37,13 @@ jobs:
           python -m py_compile liturgical_drafts_schedule.py
           python -m py_compile liturgical_drafts_word.py
           python -m py_compile liturgical_drafts_ui.py
+          python -m py_compile scripts/liturgical_drafts_automation.py
           python -m py_compile scripts/whatsapp_automation.py
 
       - name: Run liturgical draft tests
-        run: python -m unittest tests/test_liturgical_drafts.py -v
+        run: |
+          python -m unittest tests/test_liturgical_drafts.py -v
+          python -m unittest tests/test_liturgical_drafts_automation.py -v
 
       - name: Verify key imports and versions
         run: |
