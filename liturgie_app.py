@@ -10,7 +10,7 @@ import streamlit as st
 
 from liturgical_drafts import persist_liturgical_state, render_liturgical_drafts_tab
 
-APP_VERSION_OVERRIDE = "2026.09.07-persistant-supabase-v3.10.0-monitions-pu-word"
+APP_VERSION_OVERRIDE = "2026.09.07-persistant-supabase-v3.10.1-monitions-pu-auto"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
