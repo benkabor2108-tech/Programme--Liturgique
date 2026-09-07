@@ -1,0 +1,40 @@
+name: Liturgical drafts
+
+on:
+  schedule:
+    # Ouagadougou est en UTC toute l'année. Plusieurs passages après 18 h
+    # rendent la préparation robuste en cas de retard ponctuel du scheduler.
+    - cron: "0,15,45 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: liturgical-drafts
+  cancel-in-progress: false
+
+jobs:
+  prepare-drafts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install minimal dependency
+        run: python -m pip install requests
+
+      - name: Compile preparation runner
+        run: python -m py_compile scripts/liturgical_drafts_automation.py
+
+      - name: Prepare liturgical drafts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_API_KEY: ${{ secrets.SUPABASE_API_KEY }}
+          SUPABASE_STATE_KEY: ${{ secrets.SUPABASE_STATE_KEY }}
+        run: python scripts/liturgical_drafts_automation.py
