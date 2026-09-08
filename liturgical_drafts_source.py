@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 from html import unescape
 
 import requests
@@ -9,7 +9,12 @@ try:
 except ImportError:
     st = None
 
+from liturgical_drafts_schedule import easter_sunday, first_advent_sunday
 from liturgical_drafts_themes import AELF_API_BASE, APP_TIMEZONE, THEME_RULES
+
+
+DEFAULT_COUNTRY = "Burkina Faso"
+
 
 def normalize_text(value):
     text = unicodedata.normalize("NFKD", str(value or ""))
@@ -126,6 +131,51 @@ def _find_celebration_name(payload):
     return found[0][2]
 
 
+def _baptism_of_lord_limit(year):
+    """Fallback de calendrier : premier dimanche après le 6 janvier."""
+    candidate = date(year, 1, 7)
+    return candidate + timedelta(days=(6 - candidate.weekday()) % 7)
+
+
+def liturgical_season(target_date, celebration=""):
+    """Détermine le temps liturgique, d'abord par le libellé AELF puis par le calendrier."""
+    if not isinstance(target_date, date):
+        target_date = date.fromisoformat(str(target_date))
+    label = normalize_text(celebration)
+
+    direct = (
+        (("avent",), "Temps de l’Avent"),
+        (("noel", "nativite", "epiphanie", "bapteme du seigneur"), "Temps de Noël"),
+        (("careme", "rameaux"), "Temps du Carême"),
+        (("jeudi saint", "vendredi saint", "samedi saint"), "Triduum pascal"),
+        (("paques", "resurrection", "ascension", "pentecote"), "Temps pascal"),
+        (("temps ordinaire",), "Temps ordinaire"),
+    )
+    for needles, season in direct:
+        if any(needle in label for needle in needles):
+            return season
+
+    easter = easter_sunday(target_date.year)
+    ash_wednesday = easter - timedelta(days=46)
+    holy_thursday = easter - timedelta(days=3)
+    pentecost = easter + timedelta(days=49)
+    advent = first_advent_sunday(target_date.year)
+
+    if holy_thursday <= target_date < easter:
+        return "Triduum pascal"
+    if easter <= target_date <= pentecost:
+        return "Temps pascal"
+    if ash_wednesday <= target_date < holy_thursday:
+        return "Temps du Carême"
+    if advent <= target_date <= date(target_date.year, 12, 24):
+        return "Temps de l’Avent"
+    if target_date >= date(target_date.year, 12, 25):
+        return "Temps de Noël"
+    if target_date <= _baptism_of_lord_limit(target_date.year):
+        return "Temps de Noël"
+    return "Temps ordinaire"
+
+
 def extract_liturgical_context(payload, target_date, zone):
     candidates = _mass_candidates(payload)
     if not candidates:
@@ -143,7 +193,11 @@ def extract_liturgical_context(payload, target_date, zone):
         label = item_label(item)
         ref = item_ref(item)
         text = item_text(item)
-        record = {"label": str(item.get("titre") or item.get("label") or item.get("type") or "").strip(), "ref": ref, "text": text}
+        record = {
+            "label": str(item.get("titre") or item.get("label") or item.get("type") or "").strip(),
+            "ref": ref,
+            "text": text,
+        }
 
         if any(token in label for token in ("psaume", "psalm", "cantique")):
             if parts["ps"] is None:
@@ -170,6 +224,7 @@ def extract_liturgical_context(payload, target_date, zone):
         "date": target_date.isoformat(),
         "zone": zone,
         "celebration": celebration,
+        "liturgical_season": liturgical_season(target_date, celebration),
         "parts": parts,
         "source_url": f"https://www.aelf.org/{target_date.isoformat()}/{zone}/messe",
     }
@@ -232,88 +287,162 @@ def overall_themes(context):
     return themes[:3]
 
 
-def reading_phrase(record, theme, part_label):
+def _clean_excerpt_text(text):
+    text = clean_html(text)
+    text = re.sub(r"(?m)^\s*[A-ZÉÈÀÙÂÊÎÔÛÇ][A-ZÉÈÀÙÂÊÎÔÛÇ0-9 ,;:'’\-]{8,}\s*$", " ", text)
+    text = re.sub(r"\b\d{1,3}\s*", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip(" \n\t\"“”«»")
+
+
+def biblical_excerpt(record, theme="foi", max_words=16):
+    """Choisit une courte expression biblique cohérente avec le thème sans recopier un long passage."""
     if not isinstance(record, dict):
         return ""
-    ref = record.get("ref", "").strip()
-    focus = THEME_RULES[theme]["focus"]
-    ref_text = f" ({ref})" if ref else ""
-    if part_label == "Évangile":
-        return f"Dans l'Évangile{ref_text}, le Christ nous conduit vers {focus}."
-    if part_label == "Deuxième lecture":
-        return f"La deuxième lecture{ref_text} nous invite à approfondir {focus}."
-    return f"La première lecture{ref_text} nous fait découvrir {focus}."
+    text = _clean_excerpt_text(record.get("text", ""))
+    if not text:
+        return ""
+
+    sentences = [
+        s.strip(" \n\t\"“”«»")
+        for s in re.split(r"(?<=[.!?…])\s+|\n+", text)
+        if s.strip()
+    ]
+    keywords = [normalize_text(k) for k in THEME_RULES.get(theme, THEME_RULES["foi"])["keywords"]]
+
+    candidates = []
+    for sentence in sentences:
+        words = sentence.split()
+        if len(words) < 4:
+            continue
+        normalized = normalize_text(sentence)
+        score = sum(normalized.count(keyword) for keyword in keywords)
+        length_penalty = 0 if len(words) <= max_words else min(5, (len(words) - max_words) // 4 + 1)
+        candidates.append((score - length_penalty, -abs(len(words) - 10), sentence))
+
+    if not candidates:
+        return ""
+    candidates.sort(reverse=True)
+    chosen = candidates[0][2]
+    words = chosen.split()
+    if len(words) > max_words:
+        chosen = " ".join(words[:max_words]).rstrip(" ,;:") + "…"
+    return chosen
 
 
-def build_draft(context):
+def _quoted_excerpt(record, theme):
+    excerpt = biblical_excerpt(record, theme)
+    return f"« {excerpt} »" if excerpt else ""
+
+
+def _reading_for_excerpt(parts, preferred):
+    for key in preferred:
+        record = parts.get(key)
+        if isinstance(record, dict) and record.get("text"):
+            return record
+    return None
+
+
+def _celebration_sentence(celebration):
+    celebration = str(celebration or "").strip()
+    if not celebration or celebration == "Célébration liturgique":
+        return "cette célébration dominicale"
+    return celebration
+
+
+def build_draft(context, country=DEFAULT_COUNTRY):
     parts = context.get("parts", {})
-    r1_theme = theme_for_reading(parts.get("r1"), "alliance")
-    r2_theme = theme_for_reading(parts.get("r2"), "foi")
-    ev_theme = theme_for_reading(parts.get("ev"), "mission")
     themes = overall_themes(context)
+    main_theme, second_theme, third_theme = themes
 
-    reading_sentences = []
-    if parts.get("r1"):
-        reading_sentences.append(reading_phrase(parts.get("r1"), r1_theme, "Première lecture"))
-    if parts.get("r2"):
-        reading_sentences.append(reading_phrase(parts.get("r2"), r2_theme, "Deuxième lecture"))
-    if parts.get("ev"):
-        reading_sentences.append(reading_phrase(parts.get("ev"), ev_theme, "Évangile"))
+    target_date = context.get("date")
+    try:
+        service_date = date.fromisoformat(str(target_date))
+    except Exception:
+        service_date = date.today()
 
-    celebration = context.get("celebration") or "cette célébration"
-    monition = (
-        "Frères et sœurs, nous sommes rassemblés aujourd'hui pour écouter une Parole qui veut rejoindre notre vie "
-        "et renouveler notre foi. "
-        + " ".join(reading_sentences)
-        + f" À travers ces textes, un même appel se dessine : vivre {THEME_RULES[themes[0]]['focus']}, "
-        f"grandir dans {THEME_RULES[themes[1]]['focus']} et laisser notre existence être transformée par "
-        f"{THEME_RULES[themes[2]]['focus']}. Ouvrons donc notre cœur à la Parole de Dieu et entrons dans cette "
-        "célébration avec foi, disponibilité et confiance."
+    celebration = _celebration_sentence(context.get("celebration"))
+    season = liturgical_season(service_date, celebration)
+    context["liturgical_season"] = season
+
+    monition_record = _reading_for_excerpt(parts, ("ev", "r1", "r2", "ps"))
+    church_record = _reading_for_excerpt(parts, ("r2", "ev", "r1", "ps"))
+    nation_record = _reading_for_excerpt(parts, ("r1", "ps", "ev", "r2"))
+    suffering_record = _reading_for_excerpt(parts, ("ps", "ev", "r1", "r2"))
+    assembly_record = _reading_for_excerpt(parts, ("ev", "r2", "ps", "r1"))
+
+    monition_quote = _quoted_excerpt(monition_record, main_theme)
+    church_quote = _quoted_excerpt(church_record, main_theme)
+    nation_quote = _quoted_excerpt(nation_record, second_theme)
+    suffering_quote = _quoted_excerpt(suffering_record, third_theme)
+    assembly_quote = _quoted_excerpt(assembly_record, main_theme)
+
+    monition_parts = [
+        "Frères et sœurs, l’Église nous rassemble aujourd’hui autour du Christ.",
+        f"Nous célébrons {celebration}, dans le {season}.",
+        f"La Parole de Dieu nous invite à vivre {THEME_RULES[main_theme]['focus']}.",
+    ]
+    if monition_quote:
+        monition_parts.append(f"Elle fait résonner pour nous cette parole : {monition_quote}.")
+    monition_parts.append(
+        "Accueillons cette Parole dans la foi, laissons-la éclairer notre vie et ouvrons nos cœurs à la grâce "
+        "que le Seigneur veut nous donner au cours de cette célébration."
+    )
+    monition = " ".join(monition_parts)
+
+    pu_intro = (
+        f"Frères et sœurs, éclairés par la Parole de Dieu qui nous appelle aujourd’hui à vivre "
+        f"{THEME_RULES[main_theme]['focus']}, présentons avec confiance au Père les besoins de l’Église et du monde."
     )
 
-    intro = (
-        f"Frères et sœurs, éclairés par la Parole de Dieu qui nous appelle aujourd'hui à vivre "
-        f"{THEME_RULES[themes[0]]['focus']}, présentons avec confiance au Père les besoins de l'Église et du monde."
-    )
+    church_bridge = f"À la lumière de cette parole, {church_quote}, " if church_quote else ""
+    nation_bridge = f"Éclairés par cette parole, {nation_quote}, " if nation_quote else ""
+    suffering_bridge = f"Portés par cette parole, {suffering_quote}, " if suffering_quote else ""
+    assembly_bridge = f"Accueillant cette parole, {assembly_quote}, " if assembly_quote else ""
 
     intentions = [
         (
-            "Pour l'Église, le pape, les évêques, les prêtres, les consacrés et tous les baptisés : "
-            f"{THEME_RULES[themes[0]]['church']}. Ensemble, prions le Seigneur."
+            "Pour l’Église, pour le pape, les évêques, les prêtres, les diacres, les personnes consacrées, "
+            "les catéchistes et tous ceux qui servent l’Évangile : "
+            f"{church_bridge}{THEME_RULES[main_theme]['church']}. Prions le Seigneur."
         ),
         (
-            "Pour les responsables des nations et tous ceux qui exercent une autorité : "
-            f"{THEME_RULES[themes[1]]['world']}. Ensemble, prions le Seigneur."
+            f"Pour les responsables des nations, et particulièrement pour ceux de notre pays, le {country} : "
+            f"{nation_bridge}{THEME_RULES[second_theme]['world']}. "
+            "Qu’ils recherchent avec courage la paix, la justice, la sécurité et le bien commun. Prions le Seigneur."
         ),
         (
-            "Pour les personnes malades, isolées, éprouvées, victimes de violence, d'injustice ou de pauvreté : "
-            f"{THEME_RULES[themes[2]]['suffering']}. Ensemble, prions le Seigneur."
+            "Pour le monde souffrant, les malades, les prisonniers, les pauvres, les personnes déplacées, les personnes "
+            "isolées, les veuves, les veufs, les orphelins et toutes les victimes de violence ou d’injustice : "
+            f"{suffering_bridge}{THEME_RULES[third_theme]['suffering']}. Prions le Seigneur."
         ),
         (
-            "Pour nos familles, les jeunes, les personnes âgées, les enfants et tous ceux qui cherchent un chemin de foi : "
-            f"{THEME_RULES[themes[0]]['community']}. Ensemble, prions le Seigneur."
-        ),
-        (
-            "Pour notre communauté chrétienne et pour chacun de nous : que l'écoute de la Parole porte du fruit dans nos "
-            "choix, nos relations et notre service, afin que notre vie rende témoignage à l'Évangile. Ensemble, prions le Seigneur."
-        ),
-        (
-            "Pour nos frères et sœurs défunts, et pour toutes les familles dans le deuil : que le Seigneur les accueille dans "
-            "sa paix et soutienne ceux qui pleurent. Ensemble, prions le Seigneur."
+            "Pour notre assemblée en prière, nos familles, notre communauté chrétienne et tous ceux qui auraient voulu "
+            "être avec nous mais n’ont pas pu venir : "
+            f"{assembly_bridge}{THEME_RULES[main_theme]['community']}. "
+            "Que la Parole entendue aujourd’hui porte du fruit dans notre vie quotidienne. Prions le Seigneur."
         ),
     ]
 
     conclusion = (
-        "Dieu notre Père, toi qui connais les besoins de tes enfants avant même qu'ils ne les expriment, accueille les prières "
-        "que nous te présentons avec foi. Donne-nous de mettre ta Parole en pratique et de devenir, là où nous vivons, des "
-        "témoins de ton amour. Par Jésus, le Christ, notre Seigneur. Amen."
+        "Dieu notre Père, accueille les prières que ton peuple te présente avec confiance. "
+        "Fais grandir en nous la Parole reçue aujourd’hui, afin qu’elle transforme nos choix, nos relations et notre service. "
+        "Par Jésus, le Christ, notre Seigneur. Amen."
     )
 
     return {
         "monition": monition,
-        "pu_intro": intro,
+        "pu_intro": pu_intro,
         "intentions": intentions,
         "pu_conclusion": conclusion,
         "response": "Seigneur, nous te prions.",
         "themes": themes,
+        "liturgical_season": season,
+        "biblical_excerpts": {
+            "monition": biblical_excerpt(monition_record, main_theme),
+            "church": biblical_excerpt(church_record, main_theme),
+            "nation": biblical_excerpt(nation_record, second_theme),
+            "suffering": biblical_excerpt(suffering_record, third_theme),
+            "assembly": biblical_excerpt(assembly_record, main_theme),
+        },
     }
