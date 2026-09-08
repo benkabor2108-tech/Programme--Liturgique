@@ -10,7 +10,7 @@ import streamlit as st
 
 from liturgical_drafts import persist_liturgical_state, render_liturgical_drafts_tab
 
-APP_VERSION_OVERRIDE = "2026.09.07-persistant-supabase-v3.10.1-monitions-pu-auto"
+APP_VERSION_OVERRIDE = "2026.09.08-persistant-supabase-v3.10.2-monitions-pu-save-word-fix"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -67,7 +67,11 @@ def _tabs_with_private_liturgical_drafts(labels, *args, **kwargs):
         try:
             state = st.session_state.get("liturgie_state")
             if isinstance(state, dict):
-                render_liturgical_drafts_tab(state, persist_callback=persist_liturgical_state)
+                persist_callback = lambda show_success=False: persist_liturgical_state(
+                    state,
+                    show_success=show_success,
+                )
+                render_liturgical_drafts_tab(state, persist_callback=persist_callback)
             else:
                 st.warning("L'état de l'application n'est pas encore chargé.")
         except Exception as exc:
