@@ -8,9 +8,18 @@ except ImportError:
     st = None
 
 from liturgical_drafts_schedule import availability_for, is_major_event, major_celebrations, next_sunday
-from liturgical_drafts_source import build_draft, fetch_liturgical_context, normalize_text
+from liturgical_drafts_source import build_draft, fetch_liturgical_context, liturgical_season, normalize_text
 from liturgical_drafts_themes import AELF_ZONES, APP_TIMEZONE
 from liturgical_drafts_word import build_word_document
+
+
+INTENTION_LABELS = [
+    "Église et ses responsables",
+    "Responsables des nations et du Burkina Faso",
+    "Monde souffrant",
+    "Assemblée et personnes absentes",
+]
+
 
 def format_refs(context):
     refs = {}
@@ -59,6 +68,7 @@ def persist_liturgical_state(state, show_success=False):
             st.error(f"Sauvegarde Supabase impossible : {exc}")
         return False
 
+
 def saved_drafts(state):
     drafts = state.setdefault("liturgical_drafts", {})
     if not isinstance(drafts, dict):
@@ -73,7 +83,8 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
     st.success("🔐 Espace réservé à l'administrateur principal.")
     st.write(
         "Cet espace prépare une proposition de monition introductive et de prière universelle à partir des textes liturgiques "
-        "AELF de la célébration choisie. Le contenu reste éditable avant l'export Word."
+        "AELF de la célébration choisie. La monition mentionne obligatoirement le temps liturgique et la rédaction reprend de "
+        "courtes expressions bibliques du jour. Le contenu reste éditable avant l'export Word."
     )
 
     now = datetime.now(APP_TIMEZONE)
@@ -158,6 +169,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
                     or context.get("celebration") == "Célébration liturgique"
                 ):
                     context["celebration"] = celebration_hint
+                context["liturgical_season"] = liturgical_season(service_date, context.get("celebration", ""))
                 draft = build_draft(context)
             st.session_state[session_key] = draft
             st.session_state[context_key] = context
@@ -172,11 +184,13 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
             "pu_conclusion": existing.get("pu_conclusion", ""),
             "response": existing.get("response", "Seigneur, nous te prions."),
             "themes": list(existing.get("themes", []) or []),
+            "liturgical_season": existing.get("liturgical_season", ""),
         }
         st.session_state[context_key] = {
             "date": service_date.isoformat(),
             "zone": zone,
             "celebration": existing.get("celebration", celebration_hint or "Célébration liturgique"),
+            "liturgical_season": existing.get("liturgical_season", ""),
             "parts": {
                 key: {"ref": value, "text": ""}
                 for key, value in (existing.get("refs", {}) or {}).items()
@@ -196,8 +210,14 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
     context = st.session_state.get(context_key, {})
     refs = format_refs(context)
     celebration = context.get("celebration") or celebration_hint or "Célébration liturgique"
+    season = (
+        context.get("liturgical_season")
+        or draft.get("liturgical_season")
+        or liturgical_season(service_date, celebration)
+    )
 
     st.subheader(f"{service_date.strftime('%d/%m/%Y')} — {celebration}")
+    st.caption(f"Temps liturgique : {season}")
     st.caption(
         "Références : "
         + " · ".join(
@@ -218,6 +238,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
         value=draft.get("monition", ""),
         height=260,
         key=f"monition_edit_{draft_key}",
+        help="Structure : accueil → temps liturgique et célébration → thème central → courte expression biblique → invitation intérieure.",
     )
 
     pu_intro = st.text_area(
@@ -229,15 +250,23 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
 
     intentions = []
     base_intentions = list(draft.get("intentions", []) or [])
-    while len(base_intentions) < 6:
+    while len(base_intentions) < 4:
         base_intentions.append("")
+
+    # Les anciens brouillons à six intentions restent lisibles pour ne pas perdre une correction pastorale.
+    intention_count = min(6, max(4, len(base_intentions)))
     with st.expander("Intentions de la prière universelle", expanded=True):
-        for idx, value in enumerate(base_intentions[:6], start=1):
+        st.caption(
+            "Structure automatique : 1) Église et responsables ; 2) responsables des nations et du Burkina Faso ; "
+            "3) monde souffrant ; 4) assemblée et personnes absentes."
+        )
+        for idx, value in enumerate(base_intentions[:intention_count], start=1):
+            label = INTENTION_LABELS[idx - 1] if idx <= len(INTENTION_LABELS) else f"Intention complémentaire {idx}"
             intentions.append(
                 st.text_area(
-                    f"Intention {idx}",
+                    f"{idx}. {label}",
                     value=value,
-                    height=115,
+                    height=125,
                     key=f"pu_intention_{idx}_{draft_key}",
                 )
             )
@@ -261,6 +290,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
         "pu_conclusion": pu_conclusion,
         "response": response,
         "themes": draft.get("themes", []),
+        "liturgical_season": season,
     }
     st.session_state[session_key] = current
 
@@ -273,6 +303,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
                 "zone": zone,
                 "zone_label": zone_label,
                 "celebration": celebration,
+                "liturgical_season": season,
                 "refs": refs,
                 "source_url": context.get("source_url", ""),
                 "monition": monition,
@@ -302,6 +333,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
         meta = {
             "date_label": service_date.strftime("%d/%m/%Y"),
             "celebration": celebration,
+            "liturgical_season": season,
             "refs": refs,
             "zone": zone,
             "zone_label": zone_label,
