@@ -10,6 +10,7 @@ from liturgical_drafts import (
     build_word_document,
     easter_sunday,
     extract_liturgical_context,
+    liturgical_season,
     major_celebrations,
 )
 
@@ -33,6 +34,12 @@ class LiturgicalDraftTests(unittest.TestCase):
         self.assertEqual(easter_sunday(2026), date(2026, 4, 5))
         self.assertEqual(major_celebrations(2026)[date(2026, 12, 25)], "Nativité du Seigneur — Noël")
 
+    def test_liturgical_season_detection(self):
+        self.assertEqual(liturgical_season(date(2026, 9, 13), "24e dimanche du Temps ordinaire"), "Temps ordinaire")
+        self.assertEqual(liturgical_season(date(2026, 12, 6), "2e dimanche de l'Avent"), "Temps de l’Avent")
+        self.assertEqual(liturgical_season(date(2026, 12, 25), "Nativité du Seigneur — Noël"), "Temps de Noël")
+        self.assertEqual(liturgical_season(date(2026, 4, 5), "Dimanche de Pâques — Résurrection du Seigneur"), "Temps pascal")
+
     def test_extract_context_and_build_draft(self):
         payload = {
             "messes": [{
@@ -47,14 +54,21 @@ class LiturgicalDraftTests(unittest.TestCase):
         }
         context = extract_liturgical_context(payload, date(2026, 9, 13), "romain")
         self.assertEqual(context["parts"]["ev"]["ref"], "Lc 15, 1-32")
+        self.assertEqual(context["liturgical_season"], "Temps ordinaire")
         draft = build_draft(context)
         self.assertIn("Frères et sœurs", draft["monition"])
-        self.assertEqual(len(draft["intentions"]), 6)
+        self.assertIn("Temps ordinaire", draft["monition"])
+        self.assertIn("«", draft["monition"])
+        self.assertEqual(len(draft["intentions"]), 4)
+        self.assertIn("Burkina Faso", draft["intentions"][1])
+        self.assertIn("prisonniers", draft["intentions"][2])
+        self.assertIn("n’ont pas pu venir", draft["intentions"][3])
 
     def test_word_document_is_valid_docx(self):
         meta = {
             "date_label": "13/09/2026",
             "celebration": "24e dimanche du Temps ordinaire",
+            "liturgical_season": "Temps ordinaire",
             "refs": {"r1": "Ex 32", "ps": "Ps 50", "r2": "1 Tm 1", "ev": "Lc 15"},
             "zone": "romain",
             "zone_label": "Calendrier romain",
@@ -63,13 +77,15 @@ class LiturgicalDraftTests(unittest.TestCase):
             meta,
             "Monition de test.",
             "Introduction de test.",
-            [f"Intention {i}." for i in range(1, 7)],
+            [f"Intention {i}." for i in range(1, 5)],
             "Conclusion de test. Amen.",
             "Seigneur, nous te prions.",
         )
         self.assertGreater(len(data), 10000)
         with ZipFile(io.BytesIO(data)) as archive:
             self.assertIn("word/document.xml", archive.namelist())
+            xml = archive.read("word/document.xml").decode("utf-8")
+            self.assertIn("Temps ordinaire", xml)
 
 
 if __name__ == "__main__":
