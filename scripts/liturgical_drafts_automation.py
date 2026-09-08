@@ -39,9 +39,16 @@ def env(name: str, default: str = "") -> str:
     return str(os.getenv(name, default)).strip()
 
 
+def normalize_supabase_url(value: str) -> str:
+    url = str(value or "").strip().rstrip("/")
+    if url and not url.lower().startswith(("http://", "https://")):
+        url = "https://" + url
+    return url
+
+
 def load_config() -> dict:
     cfg = {
-        "supabase_url": env("SUPABASE_URL").rstrip("/"),
+        "supabase_url": normalize_supabase_url(env("SUPABASE_URL")),
         "supabase_api_key": env("SUPABASE_API_KEY"),
         "supabase_state_key": env("SUPABASE_STATE_KEY", "programme-liturgique-principal"),
     }
