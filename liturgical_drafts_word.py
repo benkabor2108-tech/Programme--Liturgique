@@ -11,6 +11,7 @@ from docx.shared import Cm, Pt
 
 from liturgical_drafts_source import normalize_text
 
+
 def _set_cell_shading(cell, fill):
     tc_pr = cell._tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
@@ -51,6 +52,14 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
     run = subtitle.add_run(meta.get("celebration", "Célébration liturgique"))
     run.bold = True
     run.font.size = Pt(12.5)
+
+    season = str(meta.get("liturgical_season", "") or "").strip()
+    if season:
+        season_p = document.add_paragraph()
+        season_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sr = season_p.add_run(season)
+        sr.italic = True
+        sr.font.size = Pt(10.5)
 
     date_p = document.add_paragraph()
     date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
