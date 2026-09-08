@@ -79,13 +79,9 @@ def saved_drafts(state):
 def render_liturgical_drafts_tab(state, persist_callback=None):
     if st is None:
         raise RuntimeError("Streamlit est requis pour afficher cet onglet.")
+
     st.header("📝 Monitions & prières universelles")
     st.success("🔐 Espace réservé à l'administrateur principal.")
-    st.write(
-        "Cet espace prépare une proposition de monition introductive et de prière universelle à partir des textes liturgiques "
-        "AELF de la célébration choisie. La monition mentionne obligatoirement le temps liturgique et la rédaction reprend de "
-        "courtes expressions bibliques du jour. Le contenu reste éditable avant l'export Word."
-    )
 
     now = datetime.now(APP_TIMEZONE)
     today = now.date()
@@ -95,11 +91,6 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
         "Type de célébration",
         ["Prochain dimanche", "Grande fête / événement", "Autre date liturgique"],
         horizontal=True,
-    )
-
-    st.caption(
-        "Les grandes célébrations proposées suivent des repères du calendrier romain. "
-        "Si une fête est transférée localement à une autre date, utilisez « Autre date liturgique »."
     )
 
     kind = "dimanche"
@@ -179,10 +170,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
     if session_key not in st.session_state and isinstance(existing, dict):
         st.session_state[session_key] = {
             "monition": existing.get("monition", ""),
-            "pu_intro": existing.get("pu_intro", ""),
             "intentions": list(existing.get("intentions", []) or []),
-            "pu_conclusion": existing.get("pu_conclusion", ""),
-            "response": existing.get("response", "Seigneur, nous te prions."),
             "themes": list(existing.get("themes", []) or []),
             "liturgical_season": existing.get("liturgical_season", ""),
         }
@@ -201,8 +189,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
 
     if session_key not in st.session_state:
         st.caption(
-            "La proposition n'est créée qu'après activation de la date et clic sur « Préparer la proposition ». "
-            "Les textes liturgiques sont récupérés directement depuis l'AELF."
+            "La proposition sera créée automatiquement à partir des textes liturgiques AELF dès que la date est disponible."
         )
         return
 
@@ -216,79 +203,37 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
         or liturgical_season(service_date, celebration)
     )
 
-    st.subheader(f"{service_date.strftime('%d/%m/%Y')} — {celebration}")
-    st.caption(f"Temps liturgique : {season}")
-    st.caption(
-        "Références : "
-        + " · ".join(
-            part for part in [
-                f"1re {refs.get('r1')}" if refs.get("r1") else "",
-                f"Ps {refs.get('ps')}" if refs.get("ps") else "",
-                f"2e {refs.get('r2')}" if refs.get("r2") else "",
-                f"Év. {refs.get('ev')}" if refs.get("ev") else "",
-            ]
-            if part
-        )
-    )
-    if draft.get("themes"):
-        st.caption("Thèmes repérés : " + ", ".join(draft["themes"]))
+    date_label = service_date.strftime("%d/%m/%Y")
 
+    st.subheader(f"Monition du {date_label}")
     monition = st.text_area(
-        "Monition introductive",
+        "Monition",
         value=draft.get("monition", ""),
-        height=260,
+        height=300,
         key=f"monition_edit_{draft_key}",
-        help="Structure : accueil → temps liturgique et célébration → thème central → courte expression biblique → invitation intérieure.",
+        label_visibility="collapsed",
+        help="La monition mentionne le temps liturgique et intègre naturellement une courte expression des textes du jour.",
     )
 
-    pu_intro = st.text_area(
-        "Introduction de la prière universelle",
-        value=draft.get("pu_intro", ""),
-        height=140,
-        key=f"pu_intro_edit_{draft_key}",
-    )
-
-    intentions = []
-    base_intentions = list(draft.get("intentions", []) or [])
+    st.subheader(f"Prière universelle du {date_label}")
+    base_intentions = list(draft.get("intentions", []) or [])[:4]
     while len(base_intentions) < 4:
         base_intentions.append("")
 
-    # Les anciens brouillons à six intentions restent lisibles pour ne pas perdre une correction pastorale.
-    intention_count = min(6, max(4, len(base_intentions)))
-    with st.expander("Intentions de la prière universelle", expanded=True):
-        st.caption(
-            "Structure automatique : 1) Église et responsables ; 2) responsables des nations et du Burkina Faso ; "
-            "3) monde souffrant ; 4) assemblée et personnes absentes."
-        )
-        for idx, value in enumerate(base_intentions[:intention_count], start=1):
-            label = INTENTION_LABELS[idx - 1] if idx <= len(INTENTION_LABELS) else f"Intention complémentaire {idx}"
-            intentions.append(
-                st.text_area(
-                    f"{idx}. {label}",
-                    value=value,
-                    height=125,
-                    key=f"pu_intention_{idx}_{draft_key}",
-                )
+    intentions = []
+    for idx, value in enumerate(base_intentions, start=1):
+        intentions.append(
+            st.text_area(
+                f"Intention {idx} — {INTENTION_LABELS[idx - 1]}",
+                value=value,
+                height=135,
+                key=f"pu_intention_{idx}_{draft_key}",
             )
-
-    response = st.text_input(
-        "Réponse de l'assemblée",
-        value=draft.get("response", "Seigneur, nous te prions."),
-        key=f"pu_response_{draft_key}",
-    )
-    pu_conclusion = st.text_area(
-        "Prière de conclusion",
-        value=draft.get("pu_conclusion", ""),
-        height=140,
-        key=f"pu_conclusion_edit_{draft_key}",
-    )
+        )
 
     current = {
         "monition": monition,
-        "pu_intro": pu_intro,
         "intentions": intentions,
-        "pu_conclusion": pu_conclusion,
-        "response": response,
         "themes": draft.get("themes", []),
         "liturgical_season": season,
     }
@@ -307,10 +252,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
                 "refs": refs,
                 "source_url": context.get("source_url", ""),
                 "monition": monition,
-                "pu_intro": pu_intro,
                 "intentions": intentions,
-                "pu_conclusion": pu_conclusion,
-                "response": response,
                 "themes": current.get("themes", []),
                 "updated_at": stamp,
             }
@@ -331,21 +273,14 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
 
     with col_word:
         meta = {
-            "date_label": service_date.strftime("%d/%m/%Y"),
+            "date_label": date_label,
             "celebration": celebration,
             "liturgical_season": season,
             "refs": refs,
             "zone": zone,
             "zone_label": zone_label,
         }
-        word_data = build_word_document(
-            meta,
-            monition,
-            pu_intro,
-            intentions,
-            pu_conclusion,
-            response,
-        )
+        word_data = build_word_document(meta, monition, "", intentions, "", "")
         safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", normalize_text(celebration)).strip("_")[:45] or "celebration"
         st.download_button(
             "📄 Télécharger le Word prêt à imprimer",
@@ -356,6 +291,6 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
         )
 
     st.caption(
-        "La proposition est une aide à la préparation. L'administrateur principal reste responsable de la relecture, "
-        "de l'adaptation au contexte pastoral local et de la validation avant proclamation."
+        "La proposition est une aide à la préparation. L'administrateur principal reste responsable de la relecture "
+        "et de la validation avant proclamation."
     )
