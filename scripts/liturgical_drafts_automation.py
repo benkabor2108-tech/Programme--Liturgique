@@ -36,7 +36,10 @@ class ConfigError(RuntimeError):
 
 
 def env(name: str, default: str = "") -> str:
-    return str(os.getenv(name, default)).strip()
+    value = str(os.getenv(name, default)).strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("\"", "'"):
+        value = value[1:-1].strip()
+    return value
 
 
 def normalize_supabase_url(value: str) -> str:
