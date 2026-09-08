@@ -2,8 +2,10 @@ name: WhatsApp reminders
 
 on:
   schedule:
-    - cron: "30 18 * * 3"
-    - cron: "30 18 * * 5"
+    # Premier passage à 18 h 30, puis nouvelles tentatives jusqu'à 23 h 45.
+    # Ouagadougou est en UTC+0 toute l'année.
+    - cron: "30,45 18 * * 3,5"
+    - cron: "*/15 19-23 * * 3,5"
   workflow_dispatch:
     inputs:
       reminder_kind:
@@ -51,13 +53,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_API_KEY: ${{ secrets.SUPABASE_API_KEY }}
           SUPABASE_STATE_KEY: ${{ secrets.SUPABASE_STATE_KEY }}
-          WHATSAPP_GRAPH_API_VERSION: ${{ secrets.WHATSAPP_GRAPH_API_VERSION }}
+          # Paramètres non sensibles figés ici pour éviter des secrets GitHub inutiles.
+          WHATSAPP_GRAPH_API_VERSION: "v25.0"
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          WHATSAPP_TEMPLATE_WEDNESDAY: ${{ secrets.WHATSAPP_TEMPLATE_WEDNESDAY }}
-          WHATSAPP_TEMPLATE_FRIDAY: ${{ secrets.WHATSAPP_TEMPLATE_FRIDAY }}
-          WHATSAPP_TEMPLATE_LANGUAGE: ${{ secrets.WHATSAPP_TEMPLATE_LANGUAGE }}
-          WHATSAPP_AUTOMATION_ENABLED: ${{ secrets.WHATSAPP_AUTOMATION_ENABLED }}
+          WHATSAPP_TEMPLATE_WEDNESDAY: "rappel_liturgie_mercredi"
+          WHATSAPP_TEMPLATE_FRIDAY: "rappel_liturgie_vendredi"
+          WHATSAPP_TEMPLATE_LANGUAGE: "fr"
+          # Reste volontairement désactivé tant que Meta n'a pas approuvé les deux modèles.
+          WHATSAPP_AUTOMATION_ENABLED: "false"
           WHATSAPP_REMINDER_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.reminder_kind || 'auto' }}
           WHATSAPP_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
         run: python scripts/whatsapp_automation.py
