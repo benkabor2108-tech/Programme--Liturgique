@@ -79,9 +79,13 @@ def saved_drafts(state):
 def render_liturgical_drafts_tab(state, persist_callback=None):
     if st is None:
         raise RuntimeError("Streamlit est requis pour afficher cet onglet.")
-
     st.header("📝 Monitions & prières universelles")
     st.success("🔐 Espace réservé à l'administrateur principal.")
+    st.write(
+        "Cet espace prépare automatiquement une monition introductive et quatre intentions de prière universelle "
+        "à partir des textes liturgiques AELF. La monition mentionne le temps liturgique et peut intégrer une courte "
+        "expression biblique du jour."
+    )
 
     now = datetime.now(APP_TIMEZONE)
     today = now.date()
@@ -170,7 +174,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
     if session_key not in st.session_state and isinstance(existing, dict):
         st.session_state[session_key] = {
             "monition": existing.get("monition", ""),
-            "intentions": list(existing.get("intentions", []) or []),
+            "intentions": list(existing.get("intentions", []) or [])[:4],
             "themes": list(existing.get("themes", []) or []),
             "liturgical_season": existing.get("liturgical_season", ""),
         }
@@ -281,11 +285,10 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
             "zone_label": zone_label,
         }
         word_data = build_word_document(meta, monition, "", intentions, "", "")
-        safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", normalize_text(celebration)).strip("_")[:45] or "celebration"
         st.download_button(
-            "📄 Télécharger le Word prêt à imprimer",
+            "📄 Télécharger le Word simplifié",
             data=word_data,
-            file_name=f"monition_priere_universelle_{service_date.isoformat()}_{safe_name}.docx",
+            file_name=f"monition_priere_universelle_{service_date.isoformat()}_SIMPLIFIE_V2.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True,
         )
