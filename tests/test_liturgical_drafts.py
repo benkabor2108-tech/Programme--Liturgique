@@ -64,7 +64,7 @@ class LiturgicalDraftTests(unittest.TestCase):
         self.assertIn("prisonniers", draft["intentions"][2])
         self.assertIn("n’ont pas pu venir", draft["intentions"][3])
 
-    def test_word_document_is_valid_docx(self):
+    def test_word_document_is_valid_and_simplified(self):
         meta = {
             "date_label": "13/09/2026",
             "celebration": "24e dimanche du Temps ordinaire",
@@ -85,7 +85,14 @@ class LiturgicalDraftTests(unittest.TestCase):
         with ZipFile(io.BytesIO(data)) as archive:
             self.assertIn("word/document.xml", archive.namelist())
             xml = archive.read("word/document.xml").decode("utf-8")
-            self.assertIn("Temps ordinaire", xml)
+            self.assertIn("MONITION DU 13/09/2026", xml)
+            self.assertIn("PRIÈRE UNIVERSELLE DU 13/09/2026", xml)
+            self.assertIn("Intention 4.", xml)
+            self.assertNotIn("Temps ordinaire", xml)
+            self.assertNotIn("Ex 32", xml)
+            self.assertNotIn("Introduction de test", xml)
+            self.assertNotIn("Seigneur, nous te prions.", xml)
+            self.assertNotIn("Conclusion de test", xml)
 
 
 if __name__ == "__main__":
