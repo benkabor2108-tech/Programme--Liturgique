@@ -7,9 +7,10 @@ Le moteur est prévu pour être lancé par GitHub Actions à partir de 18 h 00
 - chaque jour, les grandes célébrations connues qui auront lieu dans 5 jours.
 
 Le brouillon est construit à partir des textes AELF puis enregistré dans le
-même état Supabase que l'application. Un brouillon déjà présent n'est jamais
-écrasé : les corrections pastorales de l'administrateur principal sont donc
-préservées.
+même état Supabase que l'application. Les corrections pastorales enregistrées
+par l'administrateur principal ne sont jamais écrasées. En revanche, un ancien
+brouillon créé automatiquement peut être régénéré lorsqu'une nouvelle version
+du moteur de rédaction est déployée.
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ TABLE_NAME = "liturgie_state"
 DEFAULT_ZONE = "romain"
 DEFAULT_ZONE_LABEL = "Calendrier romain"
 AUTO_ACTOR = "GitHub Actions — préparation liturgique automatique"
+DRAFT_GENERATOR_VERSION = "2026.09.08-v2"
 
 
 class ConfigError(RuntimeError):
@@ -111,7 +113,6 @@ def targets_for(now: datetime) -> list[dict]:
     today = now.date()
     targets = {}
 
-    # Le mardi à partir de 18 h : préparer le dimanche suivant.
     if today.weekday() == 1:
         service_date = next_sunday(today)
         title = major_celebrations(service_date.year).get(service_date, "")
@@ -122,7 +123,6 @@ def targets_for(now: datetime) -> list[dict]:
             "rule": "mardi à 18 h 00",
         }
 
-    # Tous les jours à partir de 18 h : préparer une grande célébration à J-5.
     service_date = today + timedelta(days=5)
     title = major_celebrations(service_date.year).get(service_date)
     if title:
@@ -134,6 +134,15 @@ def targets_for(now: datetime) -> list[dict]:
         }
 
     return [targets[key] for key in sorted(targets)]
+
+
+def is_auto_draft(record: dict | None) -> bool:
+    return isinstance(record, dict) and record.get("generated_by") == AUTO_ACTOR
+
+
+def needs_auto_refresh(record: dict | None) -> bool:
+    """Rafraîchit uniquement les anciens brouillons automatiques, jamais un brouillon relu/sauvegardé manuellement."""
+    return is_auto_draft(record) and record.get("generator_version") != DRAFT_GENERATOR_VERSION
 
 
 def prepare_record(target: dict, now: datetime) -> dict:
@@ -150,6 +159,7 @@ def prepare_record(target: dict, now: datetime) -> dict:
         "zone": DEFAULT_ZONE,
         "zone_label": DEFAULT_ZONE_LABEL,
         "celebration": context.get("celebration") or hint or "Célébration liturgique",
+        "liturgical_season": draft.get("liturgical_season", context.get("liturgical_season", "")),
         "refs": format_refs(context),
         "source_url": context.get("source_url", ""),
         "monition": draft.get("monition", ""),
@@ -158,15 +168,17 @@ def prepare_record(target: dict, now: datetime) -> dict:
         "pu_conclusion": draft.get("pu_conclusion", ""),
         "response": draft.get("response", "Seigneur, nous te prions."),
         "themes": list(draft.get("themes", []) or []),
+        "biblical_excerpts": dict(draft.get("biblical_excerpts", {}) or {}),
         "updated_at": stamp,
         "auto_generated_at": stamp,
         "generated_by": AUTO_ACTOR,
+        "generator_version": DRAFT_GENERATOR_VERSION,
         "availability_rule": target.get("rule", ""),
     }
 
 
-def persist_if_missing(cfg: dict, target: dict, record: dict, now: datetime) -> bool:
-    """Ajoute le brouillon sans écraser un brouillon créé ou corrigé entre-temps."""
+def persist_record(cfg: dict, target: dict, record: dict, now: datetime) -> bool:
+    """Ajoute un brouillon, ou remplace uniquement une ancienne génération automatique."""
     latest = deepcopy(load_state(cfg))
     drafts = latest.setdefault("liturgical_drafts", {})
     if not isinstance(drafts, dict):
@@ -174,10 +186,12 @@ def persist_if_missing(cfg: dict, target: dict, record: dict, now: datetime) -> 
         latest["liturgical_drafts"] = drafts
 
     key = draft_key(target["date"])
-    if isinstance(drafts.get(key), dict):
+    existing = drafts.get(key)
+    if isinstance(existing, dict) and not needs_auto_refresh(existing):
         print(f"Brouillon déjà présent pour {target['date'].isoformat()} : aucun écrasement.")
         return False
 
+    action = "liturgical_draft_auto_refreshed" if needs_auto_refresh(existing) else "liturgical_draft_auto_generated"
     drafts[key] = record
     audit = latest.setdefault("audit_log", [])
     if not isinstance(audit, list):
@@ -186,10 +200,11 @@ def persist_if_missing(cfg: dict, target: dict, record: dict, now: datetime) -> 
     audit.append({
         "at": now.astimezone(APP_TIMEZONE).isoformat(),
         "actor": AUTO_ACTOR,
-        "action": "liturgical_draft_auto_generated",
+        "action": action,
         "date": target["date"].isoformat(),
         "celebration": record.get("celebration", ""),
         "rule": target.get("rule", ""),
+        "generator_version": DRAFT_GENERATOR_VERSION,
     })
     save_state(cfg, latest)
     return True
@@ -203,23 +218,29 @@ def run(now: datetime | None = None) -> int:
         print("Aucune rédaction liturgique à préparer maintenant.")
         return 0
 
-    created = 0
+    changed = 0
     for target in targets:
         key = draft_key(target["date"])
         state = load_state(cfg)
         drafts = state.get("liturgical_drafts", {}) if isinstance(state.get("liturgical_drafts"), dict) else {}
-        if isinstance(drafts.get(key), dict):
+        existing = drafts.get(key)
+
+        if isinstance(existing, dict) and not needs_auto_refresh(existing):
             print(f"Brouillon déjà disponible pour {target['date'].isoformat()}.")
             continue
 
-        print(f"Préparation automatique pour {target['date'].isoformat()} ({target['rule']}).")
+        if needs_auto_refresh(existing):
+            print(f"Mise à jour automatique du brouillon pour {target['date'].isoformat()} vers {DRAFT_GENERATOR_VERSION}.")
+        else:
+            print(f"Préparation automatique pour {target['date'].isoformat()} ({target['rule']}).")
+
         record = prepare_record(target, now)
-        if persist_if_missing(cfg, target, record, now):
-            created += 1
+        if persist_record(cfg, target, record, now):
+            changed += 1
             print(f"Brouillon enregistré pour {target['date'].isoformat()}.")
 
-    print(f"Préparation terminée : {created} nouveau(x) brouillon(s).")
-    return created
+    print(f"Préparation terminée : {changed} brouillon(s) créé(s) ou mis à jour.")
+    return changed
 
 
 if __name__ == "__main__":
