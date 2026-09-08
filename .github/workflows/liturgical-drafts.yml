@@ -6,6 +6,14 @@ on:
     # rendent la préparation robuste en cas de retard ponctuel du scheduler.
     - cron: "0,15,45 18 * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/liturgical_drafts_automation.py"
+      - "liturgical_drafts_source.py"
+      - "liturgical_drafts_themes.py"
+      - "liturgical_drafts_schedule.py"
+      - ".github/workflows/liturgical-drafts.yml"
 
 permissions:
   contents: read
