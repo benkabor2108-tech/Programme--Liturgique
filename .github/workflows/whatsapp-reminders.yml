@@ -72,11 +72,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          raw="${SUPABASE_URL%/}"
-          raw="${raw#\"}"
-          raw="${raw%\"}"
-          raw="${raw#\'}"
-          raw="${raw%\'}"
+
+          strip_outer_quotes() {
+            local value="$1"
+            value="${value#\"}"
+            value="${value%\"}"
+            value="${value#\'}"
+            value="${value%\'}"
+            printf '%s' "$value"
+          }
+
+          raw="$(strip_outer_quotes "${SUPABASE_URL%/}")"
+          export SUPABASE_API_KEY="$(strip_outer_quotes "$SUPABASE_API_KEY")"
+          export SUPABASE_STATE_KEY="$(strip_outer_quotes "$SUPABASE_STATE_KEY")"
+          export WHATSAPP_PHONE_NUMBER_ID="$(strip_outer_quotes "$WHATSAPP_PHONE_NUMBER_ID")"
+          export WHATSAPP_ACCESS_TOKEN="$(strip_outer_quotes "$WHATSAPP_ACCESS_TOKEN")"
+
           case "$raw" in
             http://*|https://*)
               export SUPABASE_URL="$raw"
@@ -91,4 +102,5 @@ jobs:
               export SUPABASE_URL="https://$raw.supabase.co"
               ;;
           esac
+
           python scripts/whatsapp_automation.py
