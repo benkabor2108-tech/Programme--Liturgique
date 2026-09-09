@@ -73,6 +73,10 @@ jobs:
         run: |
           set -euo pipefail
           raw="${SUPABASE_URL%/}"
+          raw="${raw#\"}"
+          raw="${raw%\"}"
+          raw="${raw#\'}"
+          raw="${raw%\'}"
           case "$raw" in
             http://*|https://*)
               export SUPABASE_URL="$raw"
