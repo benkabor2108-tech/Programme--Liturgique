@@ -60,8 +60,8 @@ jobs:
           WHATSAPP_TEMPLATE_WEDNESDAY: "rappel_liturgie_mercredi"
           WHATSAPP_TEMPLATE_FRIDAY: "rappel_liturgie_vendredi"
           WHATSAPP_TEMPLATE_LANGUAGE: "fr"
-          # Reste volontairement désactivé tant que Meta n'a pas approuvé les deux modèles.
-          WHATSAPP_AUTOMATION_ENABLED: "false"
+          # Activation définitive après approbation Meta des deux modèles.
+          WHATSAPP_AUTOMATION_ENABLED: "true"
           WHATSAPP_REMINDER_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.reminder_kind || 'auto' }}
           WHATSAPP_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
         run: python scripts/whatsapp_automation.py
