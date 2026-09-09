@@ -1,6 +1,11 @@
 name: WhatsApp reminders
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/whatsapp-reminders.yml"
   schedule:
     # Premier passage à 18 h 30, puis nouvelles tentatives jusqu'à 23 h 45.
     # Ouagadougou est en UTC+0 toute l'année.
@@ -64,4 +69,22 @@ jobs:
           WHATSAPP_AUTOMATION_ENABLED: "true"
           WHATSAPP_REMINDER_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.reminder_kind || 'auto' }}
           WHATSAPP_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
-        run: python scripts/whatsapp_automation.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw="${SUPABASE_URL%/}"
+          case "$raw" in
+            http://*|https://*)
+              export SUPABASE_URL="$raw"
+              ;;
+            *.supabase.co)
+              export SUPABASE_URL="https://$raw"
+              ;;
+            *.*)
+              export SUPABASE_URL="https://$raw"
+              ;;
+            *)
+              export SUPABASE_URL="https://$raw.supabase.co"
+              ;;
+          esac
+          python scripts/whatsapp_automation.py
