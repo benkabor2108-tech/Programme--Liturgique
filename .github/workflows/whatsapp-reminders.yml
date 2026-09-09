@@ -1,11 +1,6 @@
 name: WhatsApp reminders
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/whatsapp-reminders.yml"
   schedule:
     # Premier passage à 18 h 30, puis nouvelles tentatives jusqu'à 23 h 45.
     # Ouagadougou est en UTC+0 toute l'année.
