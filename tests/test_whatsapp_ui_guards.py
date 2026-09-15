@@ -10,7 +10,7 @@ WORKFLOW = (ROOT / ".github" / "workflows" / "whatsapp-reminders.yml").read_text
 
 class WhatsAppUiGuardTests(unittest.TestCase):
     def test_checkpoint_version_is_contact_readiness(self):
-        self.assertIn("v3.10.10-whatsapp-contact-readiness", WRAPPER)
+        self.assertIn("v3.10.12-whatsapp-admin-activation", WRAPPER)
 
     def test_streamlit_next_sunday_ignores_cancelled_history(self):
         marker = "def next_published_sunday(state, reference_day=None):"
@@ -37,8 +37,11 @@ class WhatsAppUiGuardTests(unittest.TestCase):
         self.assertIn("Aucune activation n", WRAPPER)
         self.assertIn("faite automatiquement", WRAPPER)
 
-    def test_production_workflow_is_paused(self):
-        self.assertIn('WHATSAPP_AUTOMATION_ENABLED: "false"', WORKFLOW)
+    def test_production_workflow_uses_two_key_activation(self):
+        self.assertIn('WHATSAPP_AUTOMATION_ENABLED: "true"', WORKFLOW)
+        self.assertIn("whatsapp_global_readiness.py", WORKFLOW)
+        self.assertIn("whatsapp_automation_authorized", WRAPPER)
+        self.assertIn("Autoriser les rappels automatiques WhatsApp Cloud API", WRAPPER)
 
     def test_production_workflow_requires_global_readiness_when_enabled(self):
         self.assertIn("scripts/whatsapp_global_readiness.py", WORKFLOW)

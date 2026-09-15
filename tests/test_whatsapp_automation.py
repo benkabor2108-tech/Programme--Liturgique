@@ -5,6 +5,11 @@ from scripts import whatsapp_automation as wa
 
 
 class WhatsAppAutomationTests(unittest.TestCase):
+    def test_principal_authorization_defaults_to_false(self):
+        self.assertFalse(wa.automation_authorized({}))
+        self.assertFalse(wa.automation_authorized({"whatsapp_automation_authorized": False}))
+        self.assertTrue(wa.automation_authorized({"whatsapp_automation_authorized": True}))
+
     def test_next_published_sunday_ignores_cancelled_history(self):
         state = {
             "history": [

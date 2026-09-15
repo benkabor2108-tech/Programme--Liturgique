@@ -29,6 +29,11 @@ def env(name: str, default: str = "") -> str:
     return str(os.getenv(name, default)).strip().strip("\"'")
 
 
+
+def automation_authorized(state: dict) -> bool:
+    return bool(state.get("whatsapp_automation_authorized", False)) if isinstance(state, dict) else False
+
+
 def evaluate_state(state: dict, reference_day: date) -> tuple[dict, list[dict]]:
     rows = future_readiness_rows(state, reference_day)
     summary = readiness_summary(rows)
@@ -85,6 +90,10 @@ def main() -> int:
         state_key,
         timeout=20,
     )
+    if not automation_authorized(state):
+        print("[global-readiness] Autorisation principale désactivée — aucun envoi de production autorisé.")
+        return 0
+
     summary, blocked = evaluate_state(state, reference_day)
 
     if not summary["assignments"]:
