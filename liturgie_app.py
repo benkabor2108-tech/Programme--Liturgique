@@ -25,8 +25,9 @@ from whatsapp_readiness import (
     future_readiness_rows,
     readiness_summary,
 )
+from weekend_generation import service_day_label, weekend_service_days
 
-APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.12-whatsapp-admin-activation"
+APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.13-weekend-generation"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -48,6 +49,100 @@ def _runtime_core_source():
             "Version du cœur de l'application inattendue. La couche Monitions/P.U. doit être revalidée avant exécution."
         )
     source = source.replace(old_version, f'APP_VERSION = "{APP_VERSION_OVERRIDE}"', 1)
+
+    # v3.10.13 : la génération mensuelle couvre désormais samedi + dimanche.
+    source = _replace_once(
+        source,
+        '    month_dates = {d.isoformat() for d in sundays(year, month)}\n',
+        '    month_dates = {d.isoformat() for d in weekend_service_days(year, month)}\n',
+        "dates de génération samedi + dimanche",
+    )
+    source = _replace_once(
+        source,
+        '    month_days = sundays(year, month)\n',
+        '    month_days = weekend_service_days(year, month)\n',
+        "jours du mois samedi + dimanche",
+    )
+    source = _replace_once(
+        source,
+        '    for sunday in sundays(year, month):\n',
+        '    for sunday in weekend_service_days(year, month):\n',
+        "boucle de génération samedi + dimanche",
+    )
+    source = _replace_once(
+        source,
+        '            "date": sunday.isoformat(),\n            "Dimanche": sunday.strftime("%d/%m/%Y"),\n',
+        '            "date": sunday.isoformat(),\n'
+        '            "jour_service": "samedi" if sunday.weekday() == 5 else "dimanche",\n'
+        '            "Dimanche": f"{service_day_label(sunday)} {sunday.strftime(\'%d/%m/%Y\')}",\n',
+        "libellé samedi ou dimanche",
+    )
+    source = _replace_once(
+        source,
+        '        month_sundays = sundays(year, month)\n',
+        '        month_sundays = weekend_service_days(year, month)\n',
+        "sélection des célébrations du week-end",
+    )
+    source = _replace_once(
+        source,
+        '            st.info("📖 Les références des dimanches seront récupérées automatiquement depuis l\'API AELF au moment de la génération. Aucun copier-coller n\'est nécessaire.")\n',
+        '            st.info("📖 Les références des samedis et dimanches seront récupérées automatiquement depuis l\'API AELF au moment de la génération. Aucun copier-coller n\'est nécessaire.")\n',
+        "texte AELF week-end",
+    )
+    source = _replace_once(
+        source,
+        '                            "Dimanche": d.strftime("%d/%m/%Y"),\n',
+        '                            "Célébration": f"{service_day_label(d)} {d.strftime(\'%d/%m/%Y\')}",\n',
+        "prévisualisation AELF week-end",
+    )
+    source = _replace_once(
+        source,
+        '    st.caption("📱 Vue téléphone : ouvrez un dimanche pour voir toutes les références et fonctions sans défilement horizontal.")\n',
+        '    st.caption("📱 Vue téléphone : ouvrez une célébration pour voir toutes les références et fonctions sans défilement horizontal.")\n',
+        "libellé vue téléphone",
+    )
+    source = _replace_once(
+        source,
+        '            Paragraph("Dimanche", header_style),\n',
+        '            Paragraph("Célébration", header_style),\n',
+        "en-tête PDF célébration",
+    )
+    source = _replace_once(
+        source,
+        """def next_published_sunday(state, reference_day=None):
+    reference_day = reference_day or now_ouaga().date()
+    candidates = []
+    for row in state.get("history", []) or []:
+        if not is_history_row_active(row):
+            continue
+        try:
+            day = date.fromisoformat(str(row.get("date", "")))
+        except Exception:
+            continue
+        if day >= reference_day:
+            candidates.append((day, row))
+    return min(candidates, key=lambda item: item[0]) if candidates else (None, None)
+""",
+        """def next_published_sunday(state, reference_day=None):
+    reference_day = reference_day or now_ouaga().date()
+    candidates = []
+    for row in state.get("history", []) or []:
+        if not is_history_row_active(row):
+            continue
+        try:
+            day = date.fromisoformat(str(row.get("date", "")))
+        except Exception:
+            continue
+        # Les rappels WhatsApp actuels sont conçus pour le dimanche.
+        # Un programme du samedi ne doit donc jamais décaler le prochain dimanche.
+        if day.weekday() != 6:
+            continue
+        if day >= reference_day:
+            candidates.append((day, row))
+    return min(candidates, key=lambda item: item[0]) if candidates else (None, None)
+""",
+        "rappels WhatsApp réservés aux dimanches",
+    )
 
     state_marker = '        "whatsapp_send_log": {},\n        "audit_log": [],\n'
     if source.count(state_marker) < 2:
@@ -548,6 +643,8 @@ def main():
         "future_readiness_rows": future_readiness_rows,
         "readiness_summary": readiness_summary,
         "whatsapp_display_rows": whatsapp_display_rows,
+        "weekend_service_days": weekend_service_days,
+        "service_day_label": service_day_label,
     }
     try:
         exec(compile(source, str(CORE_PATH), "exec"), namespace, namespace)

@@ -107,6 +107,8 @@ def next_published_sunday(state: dict, reference_day: date):
             day = date.fromisoformat(str(row.get("date", "")))
         except ValueError:
             continue
+        if day.weekday() != 6:
+            continue
         if day >= reference_day:
             candidates.append((day, row))
     return min(candidates, key=lambda item: item[0]) if candidates else (None, None)
