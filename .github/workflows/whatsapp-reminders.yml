@@ -45,8 +45,10 @@ jobs:
       - name: Install minimal dependency
         run: python -m pip install requests
 
-      - name: Compile automation runner
-        run: python -m py_compile scripts/whatsapp_automation.py
+      - name: Compile automation runners
+        run: |
+          python -m py_compile scripts/whatsapp_automation.py
+          python -m py_compile scripts/whatsapp_global_readiness.py
 
       - name: Run reminder engine
         env:
@@ -60,8 +62,9 @@ jobs:
           WHATSAPP_TEMPLATE_WEDNESDAY: "rappel_liturgie_mercredi"
           WHATSAPP_TEMPLATE_FRIDAY: "rappel_liturgie_vendredi"
           WHATSAPP_TEMPLATE_LANGUAGE: "fr"
-          # v3.10.9 : pause de sécurité tant que contacts et templates Meta ne sont pas intégralement validés.
-          # Les dry-runs et contrôles de readiness restent disponibles.
+          # v3.10.11 : l'envoi reste en pause. Si ce verrou passe un jour à true,
+          # le gate global ci-dessous exige que TOUS les programmes futurs actifs
+          # soient entièrement prêts avant le moindre envoi de production.
           WHATSAPP_AUTOMATION_ENABLED: "false"
           WHATSAPP_REMINDER_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.reminder_kind || 'auto' }}
           WHATSAPP_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
@@ -98,5 +101,12 @@ jobs:
               export SUPABASE_URL="https://$raw.supabase.co"
               ;;
           esac
+
+          enabled="$(printf '%s' "$WHATSAPP_AUTOMATION_ENABLED" | tr '[:upper:]' '[:lower:]')"
+          dry_run="$(printf '%s' "$WHATSAPP_DRY_RUN" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$enabled" == "true" && "$dry_run" != "true" ]]; then
+            echo "[gate] Vérification globale obligatoire avant envoi de production."
+            python scripts/whatsapp_global_readiness.py
+          fi
 
           python scripts/whatsapp_automation.py
