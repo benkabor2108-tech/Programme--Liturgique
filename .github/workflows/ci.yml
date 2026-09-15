@@ -31,6 +31,7 @@ jobs:
         run: |
           python -m py_compile liturgie_app.py
           python -m py_compile liturgie_app_core.py
+          python -m py_compile history_protection.py
           python -m py_compile liturgical_drafts.py
           python -m py_compile liturgical_drafts_themes.py
           python -m py_compile liturgical_drafts_source.py
@@ -40,10 +41,11 @@ jobs:
           python -m py_compile scripts/liturgical_drafts_automation.py
           python -m py_compile scripts/whatsapp_automation.py
 
-      - name: Run liturgical draft tests
+      - name: Run tests
         run: |
           python -m unittest tests/test_liturgical_drafts.py -v
           python -m unittest tests/test_liturgical_drafts_automation.py -v
+          python -m unittest tests/test_history_protection.py -v
 
       - name: Verify key imports and versions
         run: |
