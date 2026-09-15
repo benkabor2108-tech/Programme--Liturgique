@@ -9,8 +9,8 @@ WORKFLOW = (ROOT / ".github" / "workflows" / "whatsapp-reminders.yml").read_text
 
 
 class WhatsAppUiGuardTests(unittest.TestCase):
-    def test_checkpoint_version_is_whatsapp_readiness(self):
-        self.assertIn("v3.10.9-whatsapp-readiness", WRAPPER)
+    def test_checkpoint_version_is_contact_readiness(self):
+        self.assertIn("v3.10.10-whatsapp-contact-readiness", WRAPPER)
 
     def test_streamlit_next_sunday_ignores_cancelled_history(self):
         marker = "def next_published_sunday(state, reference_day=None):"
@@ -28,6 +28,12 @@ class WhatsAppUiGuardTests(unittest.TestCase):
     def test_ui_reports_production_automation_pause(self):
         self.assertIn("en pause de sécurité dans cette version", CORE)
         self.assertIn("Géré par GitHub Actions — envoi en pause", CORE)
+
+    def test_wrapper_adds_contact_readiness_dashboard(self):
+        self.assertIn("Préparation à l'automatisation WhatsApp", WRAPPER)
+        self.assertIn("future_readiness_rows", WRAPPER)
+        self.assertIn("whatsapp_display_rows", WRAPPER)
+        self.assertIn("Aucune activation n'est faite automatiquement", WRAPPER)
 
     def test_production_workflow_is_paused(self):
         self.assertIn('WHATSAPP_AUTOMATION_ENABLED: "false"', WORKFLOW)
