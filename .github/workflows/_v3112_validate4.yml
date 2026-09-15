@@ -1,0 +1,58 @@
+name: v3.10.12 temporary validation 4
+
+on:
+  push:
+    branches:
+      - feature/v3.10.12-whatsapp-admin-activation
+    paths:
+      - scripts/_fix_patch_v3112_encoding.py
+      - .github/workflows/_v3112_validate4.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v3.10.12-whatsapp-admin-activation
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python scripts/_fix_patch_v3112.py
+      - run: python scripts/_fix_patch_v3112_guide.py
+      - run: python scripts/_fix_patch_v3112_encoding.py
+      - name: Apply patch
+        run: python scripts/_patch_v3112.py
+      - name: Install minimal dependencies
+        run: python -m pip install requests streamlit
+      - name: Compile
+        run: |
+          python -m py_compile liturgie_app.py
+          python -m py_compile scripts/whatsapp_automation.py
+          python -m py_compile scripts/whatsapp_global_readiness.py
+          python -m py_compile tests/test_whatsapp_automation.py
+          python -m py_compile tests/test_whatsapp_global_readiness.py
+      - name: Run targeted tests
+        run: |
+          python -m unittest tests/test_whatsapp_automation.py -v
+          python -m unittest tests/test_whatsapp_global_readiness.py -v
+          python -m unittest tests/test_whatsapp_contact_readiness.py -v
+          python -m unittest tests/test_state_store.py -v
+          python -m unittest tests/test_history_protection.py -v
+          python -m unittest tests/test_role_guards.py -v
+      - name: Stage validated files
+        run: |
+          mkdir -p /tmp/v3112/scripts /tmp/v3112/tests
+          cp liturgie_app.py /tmp/v3112/
+          cp scripts/whatsapp_automation.py /tmp/v3112/scripts/
+          cp scripts/whatsapp_global_readiness.py /tmp/v3112/scripts/
+          cp tests/test_whatsapp_automation.py /tmp/v3112/tests/
+          cp tests/test_whatsapp_global_readiness.py /tmp/v3112/tests/
+          cp tests/test_whatsapp_ui_guards.py /tmp/v3112/tests/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v3112-validated-files-4
+          path: /tmp/v3112
