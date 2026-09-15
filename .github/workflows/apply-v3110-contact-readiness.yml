@@ -6,6 +6,9 @@ on:
       - feature/v3.10.10-whatsapp-contact-readiness-final8
     paths:
       - scripts/_patch_v3110.py
+      - whatsapp_readiness.py
+      - tests/test_whatsapp_contact_readiness.py
+      - tests/test_whatsapp_ui_guards.py
       - .github/workflows/apply-v3110-contact-readiness.yml
 
 permissions:
@@ -33,6 +36,7 @@ jobs:
           python -m py_compile liturgie_app.py
           python -m py_compile whatsapp_readiness.py
           python -m py_compile tests/test_whatsapp_contact_readiness.py
+          python -m py_compile tests/test_whatsapp_ui_guards.py
 
       - name: Validate runtime transformation and readiness tests
         run: |
