@@ -48,6 +48,7 @@ jobs:
           python -m unittest tests/test_liturgical_drafts_automation.py -v
           python -m unittest tests/test_history_protection.py -v
           python -m unittest tests/test_state_store.py -v
+          python -m unittest tests/test_role_guards.py -v
 
       - name: Verify key imports and versions
         run: |
