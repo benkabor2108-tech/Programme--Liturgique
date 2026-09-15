@@ -25,9 +25,14 @@ from whatsapp_readiness import (
     future_readiness_rows,
     readiness_summary,
 )
-from weekend_generation import service_day_label, weekend_service_days
+from weekend_generation import (
+    liturgical_reference_day,
+    liturgical_reference_days,
+    service_day_label,
+    weekend_service_days,
+)
 
-APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.13-weekend-generation"
+APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.14-anticipated-mass-references"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -74,6 +79,7 @@ def _runtime_core_source():
         '            "date": sunday.isoformat(),\n            "Dimanche": sunday.strftime("%d/%m/%Y"),\n',
         '            "date": sunday.isoformat(),\n'
         '            "jour_service": "samedi" if sunday.weekday() == 5 else "dimanche",\n'
+        '            "date_reference": liturgical_reference_day(sunday).isoformat(),\n'
         '            "Dimanche": f"{service_day_label(sunday)} {sunday.strftime(\'%d/%m/%Y\')}",\n',
         "libellé samedi ou dimanche",
     )
@@ -85,14 +91,84 @@ def _runtime_core_source():
     )
     source = _replace_once(
         source,
+        '''def fetch_month_aelf_refs(dates, zone):
+    refs = {}
+    errors = {}
+    for day in dates:
+        try:
+            refs[day.isoformat()] = fetch_aelf_refs(day.isoformat(), zone)
+        except Exception as exc:
+            errors[day.isoformat()] = str(exc)
+    return refs, errors
+''',
+        '''def fetch_month_aelf_refs(dates, zone):
+    refs = {}
+    errors = {}
+    for day in dates:
+        reference_day = liturgical_reference_day(day)
+        try:
+            item = dict(fetch_aelf_refs(reference_day.isoformat(), zone))
+            item["reference_date"] = reference_day.isoformat()
+            if day.weekday() == 5:
+                item["source"] = f"{item.get('source', 'AELF')} · messe anticipée du dimanche"
+            refs[day.isoformat()] = item
+        except Exception as exc:
+            errors[day.isoformat()] = str(exc)
+    return refs, errors
+''',
+        "AELF samedi = dimanche suivant",
+    )
+    source = _replace_once(
+        source,
+        '''def parse_refs(text, dates):
+    refs = {d.isoformat(): {"r1": "", "r2": "", "ev": ""} for d in dates}
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) >= 4 and parts[0] in refs:
+            refs[parts[0]] = {"r1": parts[1], "r2": parts[2], "ev": parts[3], "source": "Saisie manuelle"}
+    return refs
+''',
+        '''def parse_refs(text, dates):
+    dates = list(dates)
+    raw_refs = {}
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) >= 4:
+            raw_refs[parts[0]] = {"r1": parts[1], "r2": parts[2], "ev": parts[3], "source": "Saisie manuelle"}
+
+    refs = {}
+    for day in dates:
+        reference_day = liturgical_reference_day(day)
+        item = raw_refs.get(reference_day.isoformat())
+        # Compatibilité avec une ancienne saisie où le samedi avait sa propre ligne.
+        if item is None:
+            item = raw_refs.get(day.isoformat())
+        item = dict(item or {"r1": "", "r2": "", "ev": "", "source": "Saisie manuelle"})
+        item["reference_date"] = reference_day.isoformat()
+        if day.weekday() == 5:
+            item["source"] = "Saisie manuelle · messe anticipée du dimanche"
+        refs[day.isoformat()] = item
+    return refs
+''',
+        "saisie manuelle samedi = dimanche suivant",
+    )
+    source = _replace_once(
+        source,
         '            st.info("📖 Les références des dimanches seront récupérées automatiquement depuis l\'API AELF au moment de la génération. Aucun copier-coller n\'est nécessaire.")\n',
-        '            st.info("📖 Les références des samedis et dimanches seront récupérées automatiquement depuis l\'API AELF au moment de la génération. Aucun copier-coller n\'est nécessaire.")\n',
+        '            st.info("📖 Le samedi soir est traité comme messe anticipée : mêmes références bibliques que le dimanche qui suit, y compris si ce dimanche est dans le mois suivant. Les 3 lecteurs du samedi (1re lecture, 2e lecture, Monition/P.U.) sont tous mooréphones.")\n',
         "texte AELF week-end",
     )
     source = _replace_once(
         source,
         '                            "Dimanche": d.strftime("%d/%m/%Y"),\n',
-        '                            "Célébration": f"{service_day_label(d)} {d.strftime(\'%d/%m/%Y\')}",\n',
+        '                            "Célébration": f"{service_day_label(d)} {d.strftime(\'%d/%m/%Y\')}",\n'
+        '                            "Références du": liturgical_reference_day(d).strftime(\'%d/%m/%Y\'),\n',
         "prévisualisation AELF week-end",
     )
     source = _replace_once(
@@ -144,6 +220,160 @@ def _runtime_core_source():
         "rappels WhatsApp réservés aux dimanches",
     )
 
+    source = _replace_once(
+        source,
+        '            example = "\\n".join(f"{d.isoformat()} |  |  | " for d in month_sundays)\n            refs_text = st.text_area(\n                "AAAA-MM-JJ | 1re lecture | 2e lecture | Évangile",\n                value=example,\n                height=max(160, 38 * len(month_sundays)),\n                key=f"refs_{year}_{month}",\n            )\n',
+        '            reference_days = liturgical_reference_days(month_sundays)\n            example = "\\n".join(f"{d.isoformat()} |  |  | " for d in reference_days)\n            refs_text = st.text_area(\n                "Dimanche de référence (AAAA-MM-JJ) | 1re lecture | 2e lecture | Évangile",\n                value=example,\n                height=max(160, 38 * len(reference_days)),\n                key=f"refs_{year}_{month}",\n            )\n',
+        "saisie manuelle par dimanche de référence",
+    )
+
+    source = _replace_once(
+        source,
+        '''        f_read, m_read = choose_readers(state, sunday, rng)
+        first = state["next_first_language"]
+        if first == "FR":
+            r1_code, r1_lang, r2_code, r2_lang = f_read, "FR", m_read, "MO"
+        else:
+            r1_code, r1_lang, r2_code, r2_lang = m_read, "MO", f_read, "FR"
+
+        excluded = {f_read, m_read}
+        f_mon, m_mon = choose_monitions(state, sunday, excluded, rng)
+        excluded.update({f_mon, m_mon})
+        f_ann = choose_announcement(state, "FR", sunday, excluded, rng)
+        m_ann = choose_announcement(state, "MO", sunday, excluded, rng)
+
+        assign(state, f_read, "LECTURE", sunday)
+        assign(state, m_read, "LECTURE", sunday)
+        state["reading_pairs"].append([f_read, m_read])
+        assign(state, f_mon, "MONITION", sunday)
+        assign(state, m_mon, "MONITION", sunday)
+        state["monition_pairs"].append([f_mon, m_mon])
+        assign(state, f_ann, "ANNONCE", sunday)
+        assign(state, m_ann, "ANNONCE", sunday)
+        state["next_first_language"] = "MO" if first == "FR" else "FR"
+''',
+        '''        is_saturday = sunday.weekday() == 5
+        if is_saturday:
+            # Messe anticipée : trois lecteurs distincts, tous mooréphones.
+            # Les annonces restent une fonction indépendante, comme le dimanche.
+            mo_read_pool = [
+                c for c in programmable_codes(state, "MO", sunday)
+                if state["people"][c]["next_role"] in (None, "LECTURE")
+            ]
+            if len(mo_read_pool) < 2:
+                raise RuntimeError(
+                    "Le samedi soir exige deux lecteurs mooréphones disponibles pour les deux lectures."
+                )
+            seen = set(state["reading_cycle_seen"].get("MO", []))
+            rng.shuffle(mo_read_pool)
+            mo_read_pool.sort(
+                key=lambda c: (1 if c in seen else 0, reading_rank(state, c, sunday))
+            )
+            r1_code, r2_code = mo_read_pool[0], mo_read_pool[1]
+            r1_lang = r2_lang = "MO"
+
+            excluded = {r1_code, r2_code}
+            mo_mon_pool = monition_pool(state, "MO", excluded, sunday)
+            if not mo_mon_pool:
+                raise RuntimeError(
+                    "Le samedi soir exige un troisième lecteur mooréphone disponible pour la monition/P.U."
+                )
+            rng.shuffle(mo_mon_pool)
+            m_mon = min(mo_mon_pool, key=lambda c: monition_rank(state, c, sunday))
+            f_mon = None
+            excluded.add(m_mon)
+
+            # Les annonces restent indépendantes et sans cumul avec les trois lecteurs.
+            f_ann = choose_announcement(state, "FR", sunday, excluded, rng)
+            m_ann = choose_announcement(state, "MO", sunday, excluded, rng)
+
+            assign(state, r1_code, "LECTURE", sunday)
+            assign(state, r2_code, "LECTURE", sunday)
+            assign(state, m_mon, "MONITION", sunday)
+            assign(state, f_ann, "ANNONCE", sunday)
+            assign(state, m_ann, "ANNONCE", sunday)
+            # Ne pas modifier next_first_language : l'alternance FR/MO reste pilotée par les dimanches.
+        else:
+            f_read, m_read = choose_readers(state, sunday, rng)
+            first = state["next_first_language"]
+            if first == "FR":
+                r1_code, r1_lang, r2_code, r2_lang = f_read, "FR", m_read, "MO"
+            else:
+                r1_code, r1_lang, r2_code, r2_lang = m_read, "MO", f_read, "FR"
+
+            excluded = {f_read, m_read}
+            f_mon, m_mon = choose_monitions(state, sunday, excluded, rng)
+            excluded.update({f_mon, m_mon})
+            f_ann = choose_announcement(state, "FR", sunday, excluded, rng)
+            m_ann = choose_announcement(state, "MO", sunday, excluded, rng)
+
+            assign(state, f_read, "LECTURE", sunday)
+            assign(state, m_read, "LECTURE", sunday)
+            state["reading_pairs"].append([f_read, m_read])
+            assign(state, f_mon, "MONITION", sunday)
+            assign(state, m_mon, "MONITION", sunday)
+            state["monition_pairs"].append([f_mon, m_mon])
+            assign(state, f_ann, "ANNONCE", sunday)
+            assign(state, m_ann, "ANNONCE", sunday)
+            state["next_first_language"] = "MO" if first == "FR" else "FR"
+''',
+        "samedi trois lecteurs mooréphones",
+    )
+    source = _replace_once(
+        source,
+        '            "Monition + P.U.": f"FR : {names[f_mon]}\\nMO : {names[m_mon]}",\n',
+        '            "Monition + P.U.": (f"MO : {names[m_mon]}" if is_saturday else f"FR : {names[f_mon]}\\nMO : {names[m_mon]}"),\n',
+        "affichage monition samedi mooré",
+    )
+    source = _replace_once(
+        source,
+        '''            "codes": {
+                "r1": r1_code, "r2": r2_code,
+                "f_mon": f_mon, "m_mon": m_mon,
+                "f_ann": f_ann, "m_ann": m_ann,
+            },
+''',
+        '''            "codes": (
+                {
+                    "r1": r1_code, "r2": r2_code,
+                    "m_mon": m_mon,
+                    "f_ann": f_ann, "m_ann": m_ann,
+                }
+                if is_saturday else
+                {
+                    "r1": r1_code, "r2": r2_code,
+                    "f_mon": f_mon, "m_mon": m_mon,
+                    "f_ann": f_ann, "m_ann": m_ann,
+                }
+            ),
+''',
+        "codes samedi sans lecteur français",
+    )
+    source = _replace_once(
+        source,
+        '''        if r1 in current and r2 in current:
+            f_read = r1 if str(r1).startswith("F") else r2
+            m_read = r1 if str(r1).startswith("M") else r2
+            if f_read in current and m_read in current:
+                fresh["reading_pairs"].append([f_read, m_read])
+''',
+        '''        if r1 in current and r2 in current:
+            r1_is_fr = str(r1).startswith("F")
+            r2_is_fr = str(r2).startswith("F")
+            # Un binôme historique n'est enregistré que pour un vrai couple FR/MO du dimanche.
+            if r1_is_fr != r2_is_fr:
+                f_read = r1 if r1_is_fr else r2
+                m_read = r2 if r1_is_fr else r1
+                fresh["reading_pairs"].append([f_read, m_read])
+''',
+        "reconstruction binômes samedi mooré",
+    )
+    source = _replace_once(
+        source,
+        '        if r1 in current:\n            fresh["next_first_language"] = "MO" if str(r1).startswith("F") else "FR"\n',
+        '        if r1 in current and sunday.weekday() == 6:\n            fresh["next_first_language"] = "MO" if str(r1).startswith("F") else "FR"\n',
+        "alternance langues pilotée par le dimanche",
+    )
     state_marker = '        "whatsapp_send_log": {},\n        "audit_log": [],\n'
     if source.count(state_marker) < 2:
         raise RuntimeError("Structure d'état inattendue : impossible d'activer la persistance des brouillons liturgiques.")
@@ -645,6 +875,8 @@ def main():
         "whatsapp_display_rows": whatsapp_display_rows,
         "weekend_service_days": weekend_service_days,
         "service_day_label": service_day_label,
+        "liturgical_reference_day": liturgical_reference_day,
+        "liturgical_reference_days": liturgical_reference_days,
     }
     try:
         exec(compile(source, str(CORE_PATH), "exec"), namespace, namespace)
