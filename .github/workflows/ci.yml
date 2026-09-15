@@ -42,8 +42,10 @@ jobs:
           python -m py_compile liturgical_drafts_ui.py
           python -m py_compile scripts/liturgical_drafts_automation.py
           python -m py_compile scripts/whatsapp_automation.py
+          python -m py_compile scripts/whatsapp_global_readiness.py
           python -m py_compile tests/test_whatsapp_automation.py
           python -m py_compile tests/test_whatsapp_contact_readiness.py
+          python -m py_compile tests/test_whatsapp_global_readiness.py
           python -m py_compile tests/test_whatsapp_ui_guards.py
 
       - name: Run tests
@@ -55,6 +57,7 @@ jobs:
           python -m unittest tests/test_role_guards.py -v
           python -m unittest tests/test_whatsapp_automation.py -v
           python -m unittest tests/test_whatsapp_contact_readiness.py -v
+          python -m unittest tests/test_whatsapp_global_readiness.py -v
           python -m unittest tests/test_whatsapp_ui_guards.py -v
 
       - name: Verify key imports and versions

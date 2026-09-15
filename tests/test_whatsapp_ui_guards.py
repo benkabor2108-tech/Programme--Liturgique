@@ -40,6 +40,11 @@ class WhatsAppUiGuardTests(unittest.TestCase):
     def test_production_workflow_is_paused(self):
         self.assertIn('WHATSAPP_AUTOMATION_ENABLED: "false"', WORKFLOW)
 
+    def test_production_workflow_requires_global_readiness_when_enabled(self):
+        self.assertIn("scripts/whatsapp_global_readiness.py", WORKFLOW)
+        self.assertIn('if [[ "$enabled" == "true" && "$dry_run" != "true" ]]', WORKFLOW)
+        self.assertIn("Vérification globale obligatoire avant envoi de production", WORKFLOW)
+
 
 if __name__ == "__main__":
     unittest.main()
