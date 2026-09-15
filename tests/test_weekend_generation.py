@@ -70,6 +70,13 @@ class WeekendGenerationTests(unittest.TestCase):
         self.assertIn("saisie manuelle samedi = dimanche suivant", wrapper)
         self.assertIn("saisie manuelle par dimanche de référence", wrapper)
         self.assertIn("reference_days = liturgical_reference_days(month_sundays)", wrapper)
+        self.assertIn("samedi trois lecteurs mooréphones", wrapper)
+        self.assertIn("is_saturday = sunday.weekday() == 5", wrapper)
+        self.assertIn("r1_lang = r2_lang = \"MO\"", wrapper)
+        self.assertIn("troisième lecteur mooréphone", wrapper)
+        self.assertIn("codes samedi sans lecteur français", wrapper)
+        self.assertIn("sunday.weekday() == 6", wrapper)
+        self.assertIn("Les 3 lecteurs du samedi", wrapper)
         # Le cœur historique reste inchangé; la correction passe par la couche protégée.
         self.assertIn("def sundays(year, month):", core)
         self.assertIn("d.weekday() == 6", core)
