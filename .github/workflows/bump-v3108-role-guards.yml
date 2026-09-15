@@ -1,0 +1,56 @@
+name: Bump v3.10.8 role guards
+
+on:
+  push:
+    branches:
+      - feature/v3.10.8-role-guard-tests
+    paths:
+      - .github/workflows/bump-v3108-role-guards.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feature/v3.10.8-role-guard-tests
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Update version marker
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("liturgie_app.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.7-supabase-hardened"'
+          new = 'APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.8-role-guards"'
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected one version marker, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+      - name: Compile wrapper and role tests
+        run: |
+          python -m py_compile liturgie_app.py
+          python -m py_compile tests/test_role_guards.py
+          python -m unittest tests/test_role_guards.py -v
+
+      - name: Commit validated version marker
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add liturgie_app.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: mark v3.10.8 role guards"
+          git push origin HEAD:feature/v3.10.8-role-guard-tests
