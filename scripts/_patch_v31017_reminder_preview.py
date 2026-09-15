@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Validation retry after aligning the non-sending safety wording.
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "liturgie_app.py"
 
