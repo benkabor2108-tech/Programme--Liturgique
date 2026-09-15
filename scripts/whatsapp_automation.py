@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from history_protection import is_history_row_active
+from state_store import StateConflictError, load_state_record, save_state_if_revision
 
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
 TABLE_NAME = "liturgie_state"
@@ -77,31 +78,18 @@ def supabase_headers(cfg: dict) -> dict:
     }
 
 
+def load_state_with_revision(cfg: dict):
+    return load_state_record(
+        cfg["supabase_url"],
+        cfg["supabase_api_key"],
+        cfg["supabase_state_key"],
+        timeout=20,
+    )
+
+
 def load_state(cfg: dict) -> dict:
-    endpoint = f"{cfg['supabase_url']}/rest/v1/{TABLE_NAME}"
-    params = {
-        "select": "state_json",
-        "app_key": f"eq.{cfg['supabase_state_key']}",
-        "limit": "1",
-    }
-    response = requests.get(endpoint, headers=supabase_headers(cfg), params=params, timeout=20)
-    response.raise_for_status()
-    rows = response.json()
-    if not rows:
-        raise RuntimeError("Aucun état Programme liturgique trouvé dans Supabase.")
-    state = rows[0].get("state_json")
-    if not isinstance(state, dict):
-        raise RuntimeError("Le state_json Supabase est invalide.")
+    state, _revision, _updated_at = load_state_with_revision(cfg)
     return state
-
-
-def save_state(cfg: dict, state: dict) -> None:
-    endpoint = f"{cfg['supabase_url']}/rest/v1/{TABLE_NAME}?on_conflict=app_key"
-    headers = supabase_headers(cfg)
-    headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
-    payload = {"app_key": cfg["supabase_state_key"], "state_json": state}
-    response = requests.post(endpoint, headers=headers, json=payload, timeout=20)
-    response.raise_for_status()
 
 
 def next_published_sunday(state: dict, reference_day: date):
@@ -227,35 +215,51 @@ def send_template(cfg: dict, job: dict, sunday: date, kind: str):
 
 
 def record_success(cfg: dict, sunday: date, kind: str, job: dict, message_id: str) -> None:
-    # Recharger juste avant l'écriture pour préserver les éventuelles modifications Streamlit.
-    latest = deepcopy(load_state(cfg))
-    log = latest.setdefault("whatsapp_send_log", {})
-    if not isinstance(log, dict):
-        log = {}
-        latest["whatsapp_send_log"] = log
-    if job["send_key"] in log:
-        return
-    stamp = datetime.now(APP_TIMEZONE).isoformat()
-    log[job["send_key"]] = {
-        "status": "sent",
-        "sent_at": stamp,
-        "actor": "GitHub Actions — WhatsApp Cloud API",
-        "message_id": message_id,
-    }
-    audit = latest.setdefault("audit_log", [])
-    if not isinstance(audit, list):
-        audit = []
-        latest["audit_log"] = audit
-    audit.append({
-        "type": "whatsapp_reminder_sent",
-        "date": sunday.isoformat(),
-        "reminder": kind,
-        "member": job["code"],
-        "timestamp": stamp,
-        "actor": "GitHub Actions — WhatsApp Cloud API",
-        "message_id": message_id,
-    })
-    save_state(cfg, latest)
+    """Journalise un succès en réessayant si une autre écriture intervient simultanément."""
+    for attempt in range(1, 7):
+        latest, revision, _updated_at = load_state_with_revision(cfg)
+        latest = deepcopy(latest)
+        log = latest.setdefault("whatsapp_send_log", {})
+        if not isinstance(log, dict):
+            log = {}
+            latest["whatsapp_send_log"] = log
+        if job["send_key"] in log:
+            return
+
+        stamp = datetime.now(APP_TIMEZONE).isoformat()
+        log[job["send_key"]] = {
+            "status": "sent",
+            "sent_at": stamp,
+            "actor": "GitHub Actions — WhatsApp Cloud API",
+            "message_id": message_id,
+        }
+        audit = latest.setdefault("audit_log", [])
+        if not isinstance(audit, list):
+            audit = []
+            latest["audit_log"] = audit
+        audit.append({
+            "type": "whatsapp_reminder_sent",
+            "date": sunday.isoformat(),
+            "reminder": kind,
+            "member": job["code"],
+            "timestamp": stamp,
+            "actor": "GitHub Actions — WhatsApp Cloud API",
+            "message_id": message_id,
+        })
+        try:
+            save_state_if_revision(
+                cfg["supabase_url"],
+                cfg["supabase_api_key"],
+                cfg["supabase_state_key"],
+                latest,
+                revision,
+                timeout=20,
+            )
+            return
+        except StateConflictError:
+            if attempt >= 6:
+                raise
+            print(f"[concurrency] journal WhatsApp modifié simultanément ; nouvelle tentative {attempt + 1}/6.")
 
 
 def resolve_kind(value: str, now: datetime) -> str:

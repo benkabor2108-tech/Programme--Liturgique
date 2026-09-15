@@ -16,8 +16,11 @@ from history_protection import (
     latest_active_history_month,
 )
 from liturgical_drafts import persist_liturgical_state, render_liturgical_drafts_tab
+from state_store import (
+    StateConflictError, StateNotFoundError, load_state_record, save_state_if_revision,
+)
 
-APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.5-history-protected"
+APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.6-concurrency-protected"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -61,6 +64,96 @@ def _runtime_core_source():
         '"history", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "liturgical_drafts", "audit_log"]:\n',
         1,
     )
+
+    persistence_start = source.find("def load_remote_state():\n")
+    persistence_end = source.find("\n\ndef as_date(value):", persistence_start)
+    if persistence_start < 0 or persistence_end < 0:
+        raise RuntimeError(
+            "Structure du cœur inattendue : bloc de persistance Supabase introuvable."
+        )
+    source = source[:persistence_start] + '''def load_remote_state():
+    url, api_key, state_key = supabase_config()
+    if not (url and api_key):
+        st.session_state.supabase_revision = None
+        return None, "Secrets Supabase absents"
+
+    try:
+        raw_state, revision, _updated_at = load_state_record(
+            url,
+            api_key,
+            state_key,
+            timeout=15,
+        )
+        st.session_state.supabase_revision = revision
+        st.session_state.supabase_conflict = False
+        return normalize_state(raw_state), f"État chargé depuis Supabase · révision {revision}"
+    except StateNotFoundError:
+        st.session_state.supabase_revision = None
+        return None, "Aucun état distant enregistré"
+    except Exception as exc:
+        return None, f"Lecture Supabase impossible : {exc}"
+
+
+def save_remote_state(state):
+    url, api_key, state_key = supabase_config()
+    if not (url and api_key):
+        return False, "Secrets Supabase absents"
+
+    expected_revision = st.session_state.get("supabase_revision")
+    if expected_revision is None:
+        st.session_state.supabase_conflict = True
+        return False, (
+            "Révision Supabase inconnue. Rechargez l'état distant avant toute nouvelle sauvegarde."
+        )
+
+    try:
+        new_revision = save_state_if_revision(
+            url,
+            api_key,
+            state_key,
+            state,
+            expected_revision,
+            timeout=20,
+        )
+        st.session_state.supabase_revision = new_revision
+        st.session_state.supabase_conflict = False
+        return True, f"Sauvegardé dans Supabase · révision {new_revision}"
+    except StateConflictError:
+        st.session_state.supabase_conflict = True
+        return False, (
+            "Conflit de sauvegarde : une autre session ou automatisation a modifié les données depuis votre dernière lecture. "
+            "Aucune donnée distante n'a été écrasée. Rechargez depuis Supabase avant de reprendre vos modifications."
+        )
+    except Exception as exc:
+        return False, f"Sauvegarde Supabase impossible : {exc}"
+
+
+def ensure_loaded():
+    if "liturgie_state" in st.session_state:
+        return
+    remote, message = load_remote_state()
+    st.session_state.liturgie_state = remote if remote else initial_state()
+    st.session_state.supabase_message = message
+    st.session_state.last_rows = []
+
+
+def persist(show_success=False):
+    ok, message = save_remote_state(st.session_state.liturgie_state)
+    st.session_state.supabase_message = message
+    if ok:
+        if show_success:
+            st.success(message)
+    else:
+        if st.session_state.get("supabase_conflict", False):
+            st.error(message)
+            st.warning(
+                "Utilisez « Actualiser depuis Supabase » avant toute autre modification. "
+                "La sauvegarde refusée reste seulement dans cette session et n'a pas écrasé la base."
+            )
+        elif show_success:
+            st.error(message)
+    return ok
+''' + source[persistence_end:]
 
     source = _replace_once(
         source,
@@ -428,6 +521,10 @@ def main():
         "cancel_latest_month_non_destructive": cancel_latest_month_non_destructive,
         "cancelled_history_rows": cancelled_history_rows,
         "latest_active_history_month": latest_active_history_month,
+        "StateConflictError": StateConflictError,
+        "StateNotFoundError": StateNotFoundError,
+        "load_state_record": load_state_record,
+        "save_state_if_revision": save_state_if_revision,
     }
     try:
         exec(compile(source, str(CORE_PATH), "exec"), namespace, namespace)

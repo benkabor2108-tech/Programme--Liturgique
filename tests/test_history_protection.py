@@ -61,7 +61,7 @@ class HistoryProtectionTests(unittest.TestCase):
         module = ast.Module(body=selected, type_ignores=[])
         namespace = {
             "CORE_PATH": Path("liturgie_app_core.py"),
-            "APP_VERSION_OVERRIDE": "2026.09.15-persistant-supabase-v3.10.5-history-protected",
+            "APP_VERSION_OVERRIDE": "2026.09.15-persistant-supabase-v3.10.6-concurrency-protected",
         }
         exec(compile(module, str(wrapper_path), "exec"), namespace, namespace)
         return namespace["_runtime_core_source"]()
@@ -146,13 +146,15 @@ class HistoryProtectionTests(unittest.TestCase):
         transformed = self.transformed_core_source()
         compile(transformed, "liturgie_app_core.py", "exec")
         self.assertIn(
-            'APP_VERSION = "2026.09.15-persistant-supabase-v3.10.5-history-protected"',
+            'APP_VERSION = "2026.09.15-persistant-supabase-v3.10.6-concurrency-protected"',
             transformed,
         )
         self.assertIn("Annuler sans supprimer", transformed)
         self.assertIn("Archives annulées", transformed)
         self.assertNotIn("Réinitialiser pour un nouveau départ", transformed)
         self.assertNotIn("Supprimez d'abord ce mois de l'historique", transformed)
+        self.assertIn("supabase_revision", transformed)
+        self.assertIn("save_state_if_revision", transformed)
 
 
 if __name__ == "__main__":

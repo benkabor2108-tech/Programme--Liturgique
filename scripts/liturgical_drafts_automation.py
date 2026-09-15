@@ -23,6 +23,7 @@ import requests
 from liturgical_drafts_schedule import major_celebrations, next_sunday
 from liturgical_drafts_source import build_draft, fetch_liturgical_context
 from liturgical_drafts_themes import APP_TIMEZONE
+from state_store import StateConflictError, load_state_record, save_state_if_revision
 
 TABLE_NAME = "liturgie_state"
 DEFAULT_ZONE = "romain"
@@ -70,31 +71,18 @@ def supabase_headers(cfg: dict) -> dict:
     }
 
 
+def load_state_with_revision(cfg: dict):
+    return load_state_record(
+        cfg["supabase_url"],
+        cfg["supabase_api_key"],
+        cfg["supabase_state_key"],
+        timeout=20,
+    )
+
+
 def load_state(cfg: dict) -> dict:
-    endpoint = f"{cfg['supabase_url']}/rest/v1/{TABLE_NAME}"
-    params = {
-        "select": "state_json",
-        "app_key": f"eq.{cfg['supabase_state_key']}",
-        "limit": "1",
-    }
-    response = requests.get(endpoint, headers=supabase_headers(cfg), params=params, timeout=20)
-    response.raise_for_status()
-    rows = response.json()
-    if not rows:
-        raise RuntimeError("Aucun état Programme liturgique trouvé dans Supabase.")
-    state = rows[0].get("state_json")
-    if not isinstance(state, dict):
-        raise RuntimeError("Le state_json Supabase est invalide.")
+    state, _revision, _updated_at = load_state_with_revision(cfg)
     return state
-
-
-def save_state(cfg: dict, state: dict) -> None:
-    endpoint = f"{cfg['supabase_url']}/rest/v1/{TABLE_NAME}?on_conflict=app_key"
-    headers = supabase_headers(cfg)
-    headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
-    payload = {"app_key": cfg["supabase_state_key"], "state_json": state}
-    response = requests.post(endpoint, headers=headers, json=payload, timeout=20)
-    response.raise_for_status()
 
 
 def draft_key(service_date, zone: str = DEFAULT_ZONE) -> str:
@@ -188,36 +176,51 @@ def prepare_record(target: dict, now: datetime) -> dict:
 
 
 def persist_record(cfg: dict, target: dict, record: dict, now: datetime) -> bool:
-    """Ajoute un brouillon, ou remplace uniquement une ancienne génération automatique."""
-    latest = deepcopy(load_state(cfg))
-    drafts = latest.setdefault("liturgical_drafts", {})
-    if not isinstance(drafts, dict):
-        drafts = {}
-        latest["liturgical_drafts"] = drafts
+    """Ajoute un brouillon avec réessai CAS, sans écraser une correction manuelle."""
+    for attempt in range(1, 6):
+        latest, revision, _updated_at = load_state_with_revision(cfg)
+        latest = deepcopy(latest)
+        drafts = latest.setdefault("liturgical_drafts", {})
+        if not isinstance(drafts, dict):
+            drafts = {}
+            latest["liturgical_drafts"] = drafts
 
-    key = draft_key(target["date"])
-    existing = drafts.get(key)
-    if isinstance(existing, dict) and not needs_auto_refresh(existing):
-        print(f"Brouillon déjà présent pour {target['date'].isoformat()} : aucun écrasement.")
-        return False
+        key = draft_key(target["date"])
+        existing = drafts.get(key)
+        if isinstance(existing, dict) and not needs_auto_refresh(existing):
+            print(f"Brouillon déjà présent pour {target['date'].isoformat()} : aucun écrasement.")
+            return False
 
-    action = "liturgical_draft_auto_refreshed" if needs_auto_refresh(existing) else "liturgical_draft_auto_generated"
-    drafts[key] = record
-    audit = latest.setdefault("audit_log", [])
-    if not isinstance(audit, list):
-        audit = []
-        latest["audit_log"] = audit
-    audit.append({
-        "at": now.astimezone(APP_TIMEZONE).isoformat(),
-        "actor": AUTO_ACTOR,
-        "action": action,
-        "date": target["date"].isoformat(),
-        "celebration": record.get("celebration", ""),
-        "rule": target.get("rule", ""),
-        "generator_version": DRAFT_GENERATOR_VERSION,
-    })
-    save_state(cfg, latest)
-    return True
+        action = "liturgical_draft_auto_refreshed" if needs_auto_refresh(existing) else "liturgical_draft_auto_generated"
+        drafts[key] = record
+        audit = latest.setdefault("audit_log", [])
+        if not isinstance(audit, list):
+            audit = []
+            latest["audit_log"] = audit
+        audit.append({
+            "at": now.astimezone(APP_TIMEZONE).isoformat(),
+            "actor": AUTO_ACTOR,
+            "action": action,
+            "date": target["date"].isoformat(),
+            "celebration": record.get("celebration", ""),
+            "rule": target.get("rule", ""),
+            "generator_version": DRAFT_GENERATOR_VERSION,
+        })
+        try:
+            save_state_if_revision(
+                cfg["supabase_url"],
+                cfg["supabase_api_key"],
+                cfg["supabase_state_key"],
+                latest,
+                revision,
+                timeout=20,
+            )
+            return True
+        except StateConflictError:
+            if attempt >= 5:
+                raise
+            print(f"[concurrency] état modifié pendant l'écriture ; nouvelle tentative {attempt + 1}/5.")
+    return False
 
 
 def run(now: datetime | None = None) -> int:
