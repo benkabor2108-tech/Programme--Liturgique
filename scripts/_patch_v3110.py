@@ -18,33 +18,32 @@ text = replace_once(
     "version marker",
 )
 
-import_marker = '''from state_store import (
+import_marker = """from state_store import (
     StateConflictError, StateNotFoundError, load_state_record, save_state_if_revision,
 )
 
-'''
+"""
 text = replace_once(
     text,
     import_marker,
-    import_marker + '''from whatsapp_readiness import (
+    import_marker + """from whatsapp_readiness import (
     display_rows as whatsapp_display_rows,
     future_readiness_rows,
     readiness_summary,
 )
 
-''',
+""",
     "WhatsApp readiness imports",
 )
 
-runtime_tail = '''    return source
+runtime_tail = """    return source
 
 
 _original_tabs = st.tabs
-'''
-readiness_patch = '''    source = _replace_once(
-        source,
-        '        with st.expander("📱 Numéros et consentements", expanded=False):\\n',
-        '''        st.markdown("### 🧭 Préparation à l'automatisation WhatsApp")
+"""
+
+ui_old = '        with st.expander("📱 Numéros et consentements", expanded=False):\n'
+ui_new = """        st.markdown("### 🧭 Préparation à l'automatisation WhatsApp")
         _wa_rows = future_readiness_rows(state, reference_day=_now.date())
         _wa_summary = readiness_summary(_wa_rows)
         if _wa_rows:
@@ -86,13 +85,9 @@ readiness_patch = '''    source = _replace_once(
             st.info("Aucun programme futur actif n'est publié : aucune readiness WhatsApp à contrôler.")
 
         with st.expander("📱 Numéros et consentements", expanded=False):
-''',
-        "tableau de readiness WhatsApp",
-    )
+"""
 
-    source = _replace_once(
-        source,
-        '''    st.subheader("🤖 Automatisation future")
+guide_old = """    st.subheader("🤖 Automatisation future")
     st.write(
         "L'application est techniquement préparée pour une automatisation complète des rappels. "
         "Cette évolution nécessitera un accès officiel à WhatsApp Business API, des modèles "
@@ -103,8 +98,9 @@ readiness_patch = '''    source = _replace_once(
         "Sécurité actuelle : l'automatisation complète est désactivée. "
         "Aucun rappel WhatsApp ne peut partir automatiquement à l'insu du responsable."
     )
-''',
-        '''    st.subheader("🤖 Automatisation Cloud API")
+"""
+
+guide_new = """    st.subheader("🤖 Automatisation Cloud API")
     st.write(
         "Le moteur WhatsApp Cloud API est piloté par GitHub Actions. Avant toute réactivation, "
         "un contrôle de readiness vérifie le numéro expéditeur Meta, les templates approuvés "
@@ -114,23 +110,33 @@ readiness_patch = '''    source = _replace_once(
         "Mode de sécurité actuel : l'envoi automatique reste en pause tant que le readiness complet "
         "n'est pas vert. Les rappels assistés et les simulations restent disponibles."
     )
-''',
-        "guide WhatsApp actuel",
-    )
+"""
 
-''' + runtime_tail
-text = replace_once(text, runtime_tail, readiness_patch, "runtime tail")
+injected = (
+    "    source = _replace_once(\n"
+    "        source,\n"
+    f"        {ui_old!r},\n"
+    f"        {ui_new!r},\n"
+    "        \"tableau de readiness WhatsApp\",\n"
+    "    )\n\n"
+    "    source = _replace_once(\n"
+    "        source,\n"
+    f"        {guide_old!r},\n"
+    f"        {guide_new!r},\n"
+    "        \"guide WhatsApp actuel\",\n"
+    "    )\n\n"
+    + runtime_tail
+)
+text = replace_once(text, runtime_tail, injected, "runtime tail")
 
-namespace_marker = '''        "save_state_if_revision": save_state_if_revision,
-'''
+namespace_marker = '        "save_state_if_revision": save_state_if_revision,\n'
 text = replace_once(
     text,
     namespace_marker,
     namespace_marker
-    + '''        "future_readiness_rows": future_readiness_rows,
-        "readiness_summary": readiness_summary,
-        "whatsapp_display_rows": whatsapp_display_rows,
-''',
+    + '        "future_readiness_rows": future_readiness_rows,\n'
+      '        "readiness_summary": readiness_summary,\n'
+      '        "whatsapp_display_rows": whatsapp_display_rows,\n',
     "runtime namespace",
 )
 
