@@ -9,8 +9,8 @@ WORKFLOW = (ROOT / ".github" / "workflows" / "whatsapp-reminders.yml").read_text
 
 
 class WhatsAppUiGuardTests(unittest.TestCase):
-    def test_checkpoint_version_is_contact_readiness(self):
-        self.assertIn("v3.10.14-anticipated-mass-references", WRAPPER)
+    def test_checkpoint_version_is_weekend_readiness(self):
+        self.assertIn("v3.10.15-weekend-whatsapp-readiness", WRAPPER)
 
     def test_streamlit_next_sunday_ignores_cancelled_history(self):
         marker = "def next_published_sunday(state, reference_day=None):"
@@ -29,11 +29,14 @@ class WhatsAppUiGuardTests(unittest.TestCase):
         self.assertIn("en pause de sécurité dans cette version", CORE)
         self.assertIn("Géré par GitHub Actions — envoi en pause", CORE)
 
-    def test_wrapper_adds_contact_readiness_dashboard(self):
+    def test_wrapper_adds_weekend_contact_readiness_dashboard(self):
         self.assertIn("Préparation à l", WRAPPER)
         self.assertIn("automatisation WhatsApp", WRAPPER)
         self.assertIn("future_readiness_rows", WRAPPER)
         self.assertIn("whatsapp_display_rows", WRAPPER)
+        self.assertIn("Célébrations futures", WRAPPER)
+        self.assertIn('_wa_summary["celebrations"]', WRAPPER)
+        self.assertIn("samedi + dimanche", WRAPPER)
         self.assertIn("Aucune activation n", WRAPPER)
         self.assertIn("faite automatiquement", WRAPPER)
 
