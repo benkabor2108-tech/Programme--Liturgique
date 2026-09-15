@@ -92,6 +92,12 @@ def load_state(cfg: dict) -> dict:
     return state
 
 
+
+def automation_authorized(state: dict) -> bool:
+    """Autorisation métier persistée par l'administrateur principal."""
+    return bool(state.get("whatsapp_automation_authorized", False)) if isinstance(state, dict) else False
+
+
 def next_published_sunday(state: dict, reference_day: date):
     candidates = []
     for row in state.get("history", []) or []:
@@ -362,6 +368,10 @@ def main() -> int:
     if cfg["dry_run"]:
         for job in pending:
             print(f"[dry-run] {job['code']} — {job['name']} — {job['role']}")
+        return 0
+
+    if not automation_authorized(state):
+        print("[preflight] Autorisation principale WhatsApp désactivée; aucun message envoyé.")
         return 0
 
     missing = whatsapp_config_missing(cfg)

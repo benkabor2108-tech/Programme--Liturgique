@@ -5,6 +5,10 @@ from scripts import whatsapp_global_readiness as gate
 
 
 class WhatsAppGlobalReadinessTests(unittest.TestCase):
+    def test_principal_authorization_defaults_to_false(self):
+        self.assertFalse(gate.automation_authorized({}))
+        self.assertTrue(gate.automation_authorized({"whatsapp_automation_authorized": True}))
+
     def test_blocks_if_any_future_assignment_is_not_ready(self):
         state = {
             "names": {"F1": "Lecteur F1", "M3": "Lecteur M3"},
