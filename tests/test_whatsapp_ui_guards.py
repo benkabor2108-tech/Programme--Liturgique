@@ -7,11 +7,12 @@ CORE = (ROOT / "liturgie_app_core.py").read_text(encoding="utf-8")
 WRAPPER = (ROOT / "liturgie_app.py").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / ".github" / "workflows" / "whatsapp-reminders.yml").read_text(encoding="utf-8")
 AUTOMATION = (ROOT / "scripts" / "whatsapp_automation.py").read_text(encoding="utf-8")
+PREVIEW = (ROOT / "whatsapp_reminder_preview.py").read_text(encoding="utf-8")
 
 
 class WhatsAppUiGuardTests(unittest.TestCase):
-    def test_checkpoint_version_is_weekend_reminders(self):
-        self.assertIn("v3.10.16-weekend-whatsapp-reminders", WRAPPER)
+    def test_checkpoint_version_is_reminder_preview(self):
+        self.assertIn("v3.10.17-whatsapp-reminder-preview", WRAPPER)
 
     def test_streamlit_next_sunday_ignores_cancelled_history(self):
         marker = "def next_published_sunday(state, reference_day=None):"
@@ -40,6 +41,16 @@ class WhatsAppUiGuardTests(unittest.TestCase):
         self.assertIn("samedi + dimanche", WRAPPER)
         self.assertIn("Aucune activation n", WRAPPER)
         self.assertIn("faite automatiquement", WRAPPER)
+
+    def test_wrapper_adds_non_sending_reminder_preview(self):
+        self.assertIn("Aperçu des prochains rappels WhatsApp", WRAPPER)
+        self.assertIn("reminder_preview_rows", WRAPPER)
+        self.assertIn("reminder_preview_summary", WRAPPER)
+        self.assertIn("reminder_preview_display_rows", WRAPPER)
+        self.assertIn("Aucun message n'est envoyé depuis cet aperçu", WRAPPER)
+        self.assertIn("Mercredi", PREVIEW)
+        self.assertIn("Vendredi", PREVIEW)
+        self.assertNotIn('"number"', PREVIEW)
 
     def test_production_workflow_uses_two_key_activation(self):
         self.assertIn('WHATSAPP_AUTOMATION_ENABLED: "true"', WORKFLOW)
