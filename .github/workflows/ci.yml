@@ -33,6 +33,7 @@ jobs:
           python -m py_compile liturgie_app_core.py
           python -m py_compile history_protection.py
           python -m py_compile state_store.py
+          python -m py_compile whatsapp_readiness.py
           python -m py_compile liturgical_drafts.py
           python -m py_compile liturgical_drafts_themes.py
           python -m py_compile liturgical_drafts_source.py
@@ -42,6 +43,7 @@ jobs:
           python -m py_compile scripts/liturgical_drafts_automation.py
           python -m py_compile scripts/whatsapp_automation.py
           python -m py_compile tests/test_whatsapp_automation.py
+          python -m py_compile tests/test_whatsapp_contact_readiness.py
           python -m py_compile tests/test_whatsapp_ui_guards.py
 
       - name: Run tests
@@ -52,6 +54,7 @@ jobs:
           python -m unittest tests/test_state_store.py -v
           python -m unittest tests/test_role_guards.py -v
           python -m unittest tests/test_whatsapp_automation.py -v
+          python -m unittest tests/test_whatsapp_contact_readiness.py -v
           python -m unittest tests/test_whatsapp_ui_guards.py -v
 
       - name: Verify key imports and versions
