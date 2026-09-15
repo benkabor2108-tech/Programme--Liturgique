@@ -4,6 +4,12 @@
 Le script lit le programme publié et les préférences WhatsApp dans Supabase,
 envoie des modèles Meta approuvés, puis journalise chaque succès dans Supabase
 pour éviter les doublons. Aucun secret ni numéro n'est affiché dans les logs.
+
+Depuis v3.10.16, le cycle de rappel couvre le week-end liturgique complet :
+- messe anticipée du samedi soir ;
+- messe du dimanche.
+Les rappels restent envoyés le mercredi et le vendredi précédents. Si une même
+personne est programmée les deux jours, un seul message regroupe ses services.
 """
 from __future__ import annotations
 
@@ -92,14 +98,26 @@ def load_state(cfg: dict) -> dict:
     return state
 
 
-
 def automation_authorized(state: dict) -> bool:
     """Autorisation métier persistée par l'administrateur principal."""
     return bool(state.get("whatsapp_automation_authorized", False)) if isinstance(state, dict) else False
 
 
-def next_published_sunday(state: dict, reference_day: date):
-    candidates = []
+def weekend_anchor(day: date) -> date:
+    """Retourne le dimanche qui sert d'ancre au week-end liturgique."""
+    if day.weekday() == 5:  # samedi
+        return day + timedelta(days=1)
+    return day
+
+
+def next_published_weekend(state: dict, reference_day: date):
+    """Retourne (dimanche_ancre, [(date_service, ligne), ...]) pour le prochain week-end actif.
+
+    Les lignes du samedi et du dimanche sont regroupées sous le dimanche qui suit.
+    Une ligne déjà passée par rapport à ``reference_day`` est ignorée, ce qui évite
+    qu'un lancement manuel le dimanche tente de rappeler la messe anticipée déjà passée.
+    """
+    grouped: dict[date, list[tuple[date, dict]]] = {}
     for row in state.get("history", []) or []:
         if not isinstance(row, dict) or not is_history_row_active(row):
             continue
@@ -107,11 +125,29 @@ def next_published_sunday(state: dict, reference_day: date):
             day = date.fromisoformat(str(row.get("date", "")))
         except ValueError:
             continue
-        if day.weekday() != 6:
+        if day.weekday() not in (5, 6):
             continue
-        if day >= reference_day:
-            candidates.append((day, row))
-    return min(candidates, key=lambda item: item[0]) if candidates else (None, None)
+        if day < reference_day:
+            continue
+        anchor = weekend_anchor(day)
+        grouped.setdefault(anchor, []).append((day, row))
+
+    if not grouped:
+        return None, []
+    anchor = min(grouped)
+    services = sorted(grouped[anchor], key=lambda item: item[0])
+    return anchor, services
+
+
+def next_published_sunday(state: dict, reference_day: date):
+    """Compatibilité historique : retourne uniquement la ligne du prochain dimanche."""
+    anchor, services = next_published_weekend(state, reference_day)
+    if not anchor:
+        return None, None
+    for day, row in services:
+        if day.weekday() == 6:
+            return day, row
+    return None, None
 
 
 def reminder_date(sunday: date, kind: str) -> date:
@@ -119,6 +155,7 @@ def reminder_date(sunday: date, kind: str) -> date:
 
 
 def send_key(sunday: date, kind: str, code: str) -> str:
+    """Une clé par membre et week-end : évite un doublon samedi + dimanche."""
     return f"{sunday.isoformat()}|{kind}|{code}"
 
 
@@ -168,21 +205,60 @@ def scheduled_codes(row: dict) -> list[str]:
     return result
 
 
-def build_jobs(state: dict, sunday: date, row: dict, kind: str) -> list[dict]:
+def service_day_name(day: date) -> str:
+    return "Samedi" if day.weekday() == 5 else "Dimanche"
+
+
+def _service_assignment_label(day: date, role: str) -> str:
+    return f"{service_day_name(day)} {day:%d/%m/%Y} : {role}"
+
+
+def build_weekend_jobs(
+    state: dict,
+    sunday: date,
+    services: list[tuple[date, dict]],
+    kind: str,
+) -> list[dict]:
+    """Construit un seul job par membre pour l'ensemble samedi + dimanche."""
     contacts = state.get("whatsapp_contacts", {}) if isinstance(state.get("whatsapp_contacts"), dict) else {}
     names = state.get("names", {}) if isinstance(state.get("names"), dict) else {}
     log = state.get("whatsapp_send_log", {}) if isinstance(state.get("whatsapp_send_log"), dict) else {}
+
+    assignments: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for service_day, row in sorted(services, key=lambda item: item[0]):
+        for code in scheduled_codes(row):
+            if code not in assignments:
+                assignments[code] = []
+                order.append(code)
+            assignments[code].append({
+                "date": service_day.isoformat(),
+                "date_label": service_day.strftime("%d/%m/%Y"),
+                "day_name": service_day_name(service_day),
+                "role": role_for_code(row, code),
+            })
+
     jobs = []
-    for code in scheduled_codes(row):
+    for code in order:
         contact = contacts.get(code, {})
         if not isinstance(contact, dict):
             contact = {}
         number, ready, not_ready_reasons = contact_readiness(contact)
+        member_assignments = assignments[code]
+        role_text = " ; ".join(
+            _service_assignment_label(date.fromisoformat(item["date"]), item["role"])
+            for item in member_assignments
+        )
+        service_label = " et ".join(
+            f"{item['day_name']} {item['date_label']}" for item in member_assignments
+        )
         key = send_key(sunday, kind, code)
         jobs.append({
             "code": code,
             "name": str(names.get(code, code)),
-            "role": role_for_code(row, code),
+            "role": role_text,
+            "service_label": service_label,
+            "assignments": member_assignments,
             "number": number,
             "ready": ready,
             "not_ready_reasons": not_ready_reasons,
@@ -190,6 +266,16 @@ def build_jobs(state: dict, sunday: date, row: dict, kind: str) -> list[dict]:
             "send_key": key,
         })
     return jobs
+
+
+def build_jobs(state: dict, service_day: date, row: dict, kind: str) -> list[dict]:
+    """Compatibilité pour les tests/appels unitaires sur une seule célébration."""
+    return build_weekend_jobs(
+        state,
+        weekend_anchor(service_day),
+        [(service_day, row)],
+        kind,
+    )
 
 
 def template_name(cfg: dict, kind: str) -> str:
@@ -209,7 +295,7 @@ def send_template(cfg: dict, job: dict, sunday: date, kind: str):
                 "type": "body",
                 "parameters": [
                     {"type": "text", "text": job["name"]},
-                    {"type": "text", "text": sunday.strftime("%d/%m/%Y")},
+                    {"type": "text", "text": job.get("service_label") or sunday.strftime("%d/%m/%Y")},
                     {"type": "text", "text": job["role"]},
                 ],
             }],
@@ -254,6 +340,8 @@ def record_success(cfg: dict, sunday: date, kind: str, job: dict, message_id: st
             "sent_at": stamp,
             "actor": "GitHub Actions — WhatsApp Cloud API",
             "message_id": message_id,
+            "weekend_sunday": sunday.isoformat(),
+            "assignments": deepcopy(job.get("assignments", [])),
         }
         audit = latest.setdefault("audit_log", [])
         if not isinstance(audit, list):
@@ -262,8 +350,10 @@ def record_success(cfg: dict, sunday: date, kind: str, job: dict, message_id: st
         audit.append({
             "type": "whatsapp_reminder_sent",
             "date": sunday.isoformat(),
+            "weekend_sunday": sunday.isoformat(),
             "reminder": kind,
             "member": job["code"],
+            "assignments": deepcopy(job.get("assignments", [])),
             "timestamp": stamp,
             "actor": "GitHub Actions — WhatsApp Cloud API",
             "message_id": message_id,
@@ -301,7 +391,7 @@ def main() -> int:
     parser.add_argument(
         "--readiness-only",
         action="store_true",
-        help="Contrôle le prochain dimanche sans envoyer ni journaliser.",
+        help="Contrôle le prochain week-end samedi + dimanche sans envoyer ni journaliser.",
     )
     parser.add_argument(
         "--require-complete",
@@ -328,19 +418,20 @@ def main() -> int:
         return 0
 
     state = load_state(cfg)
-    sunday, row = next_published_sunday(state, reference_day)
-    if not sunday or not row:
-        print("[info] Aucun dimanche futur publié; aucun rappel à envoyer.")
+    sunday, services = next_published_weekend(state, reference_day)
+    if not sunday or not services:
+        print("[info] Aucun week-end liturgique futur publié; aucun rappel à envoyer.")
         return 0
 
+    jobs = build_weekend_jobs(state, sunday, services, kind)
+    ready_jobs = [job for job in jobs if job["ready"]]
+    not_ready = [job for job in jobs if not job["ready"]]
+
     if args.readiness_only:
-        jobs = build_jobs(state, sunday, row, "mercredi")
-        ready_jobs = [job for job in jobs if job["ready"]]
-        not_ready = [job for job in jobs if not job["ready"]]
         missing_config = whatsapp_config_missing(cfg)
         print(
-            f"[readiness] dimanche={sunday:%d/%m/%Y} "
-            f"prêts={len(ready_jobs)} non_configurés={len(not_ready)}"
+            f"[readiness] week-end={sunday:%d/%m/%Y} "
+            f"célébrations={len(services)} prêts={len(ready_jobs)} non_configurés={len(not_ready)}"
         )
         for job in not_ready:
             reasons = ", ".join(job.get("not_ready_reasons", [])) or "configuration incomplète"
@@ -358,11 +449,12 @@ def main() -> int:
         print(f"[info] Aucun envoi aujourd'hui: rappel {kind} prévu le {expected_day:%d/%m/%Y}.")
         return 0
 
-    jobs = build_jobs(state, sunday, row, kind)
     pending = [j for j in jobs if j["ready"] and not j["already_sent"]]
-    not_ready = [j for j in jobs if not j["ready"]]
     already_sent = [j for j in jobs if j["already_sent"]]
-    print(f"[plan] dimanche={sunday:%d/%m/%Y} rappel={kind} prêts={len(pending)} déjà_envoyés={len(already_sent)} non_configurés={len(not_ready)}")
+    print(
+        f"[plan] week-end={sunday:%d/%m/%Y} célébrations={len(services)} rappel={kind} "
+        f"prêts={len(pending)} déjà_envoyés={len(already_sent)} non_configurés={len(not_ready)}"
+    )
     for job in not_ready:
         reasons = ", ".join(job.get("not_ready_reasons", [])) or "configuration incomplète"
         print(f"[warning] {job['code']} — {job['name']} — {reasons}")
@@ -371,6 +463,12 @@ def main() -> int:
         for job in pending:
             print(f"[dry-run] {job['code']} — {job['name']} — {job['role']}")
         return 0
+
+    # Défense en profondeur : même hors workflow GitHub, aucun envoi partiel
+    # si le prochain week-end contient un contact non prêt.
+    if not_ready:
+        print("[preflight] Week-end incomplet; aucun message envoyé.")
+        return 2
 
     if not automation_authorized(state):
         print("[preflight] Autorisation principale WhatsApp désactivée; aucun message envoyé.")

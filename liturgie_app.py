@@ -32,7 +32,7 @@ from weekend_generation import (
     weekend_service_days,
 )
 
-APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.15-weekend-whatsapp-readiness"
+APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.16-weekend-whatsapp-reminders"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 

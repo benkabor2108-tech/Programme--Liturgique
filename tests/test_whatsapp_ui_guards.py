@@ -6,11 +6,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CORE = (ROOT / "liturgie_app_core.py").read_text(encoding="utf-8")
 WRAPPER = (ROOT / "liturgie_app.py").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / ".github" / "workflows" / "whatsapp-reminders.yml").read_text(encoding="utf-8")
+AUTOMATION = (ROOT / "scripts" / "whatsapp_automation.py").read_text(encoding="utf-8")
 
 
 class WhatsAppUiGuardTests(unittest.TestCase):
-    def test_checkpoint_version_is_weekend_readiness(self):
-        self.assertIn("v3.10.15-weekend-whatsapp-readiness", WRAPPER)
+    def test_checkpoint_version_is_weekend_reminders(self):
+        self.assertIn("v3.10.16-weekend-whatsapp-reminders", WRAPPER)
 
     def test_streamlit_next_sunday_ignores_cancelled_history(self):
         marker = "def next_published_sunday(state, reference_day=None):"
@@ -50,6 +51,12 @@ class WhatsAppUiGuardTests(unittest.TestCase):
         self.assertIn("scripts/whatsapp_global_readiness.py", WORKFLOW)
         self.assertIn('if [[ "$enabled" == "true" && "$dry_run" != "true" ]]', WORKFLOW)
         self.assertIn("Vérification globale obligatoire avant envoi de production", WORKFLOW)
+
+    def test_reminder_engine_groups_saturday_and_sunday(self):
+        self.assertIn("def next_published_weekend", AUTOMATION)
+        self.assertIn("def build_weekend_jobs", AUTOMATION)
+        self.assertIn("un seul message regroupe ses services", AUTOMATION)
+        self.assertIn("Week-end incomplet; aucun message envoyé", AUTOMATION)
 
 
 if __name__ == "__main__":
