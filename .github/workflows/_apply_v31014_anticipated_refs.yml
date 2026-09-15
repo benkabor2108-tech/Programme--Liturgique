@@ -37,6 +37,19 @@ jobs:
       - name: Apply guarded patch
         run: python scripts/_patch_v31014_anticipated_refs.py
 
+      - name: Update version regression guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_whatsapp_ui_guards.py")
+          text = path.read_text(encoding="utf-8")
+          old = "v3.10.13-weekend-generation"
+          new = "v3.10.14-anticipated-mass-references"
+          if text.count(old) != 1:
+              raise SystemExit(f"Unexpected version guard count: {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -47,6 +60,7 @@ jobs:
           python -m py_compile liturgie_app.py
           python -m py_compile weekend_generation.py
           python -m py_compile tests/test_weekend_generation.py
+          python -m py_compile tests/test_whatsapp_ui_guards.py
 
       - name: Run focused and regression tests
         run: |
@@ -66,7 +80,7 @@ jobs:
         run: |
           git config user.name "benkabor2108-tech"
           git config user.email "benkabor2108@gmail.com"
-          git add liturgie_app.py weekend_generation.py tests/test_weekend_generation.py
+          git add liturgie_app.py weekend_generation.py tests/test_weekend_generation.py tests/test_whatsapp_ui_guards.py
           if git diff --cached --quiet; then
             echo "No product changes to commit."
           else
