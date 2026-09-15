@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from history_protection import is_history_row_active
+
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
 TABLE_NAME = "liturgie_state"
 ROLE_KEYS = ("r1", "r2", "f_mon", "m_mon", "f_ann", "m_ann")
@@ -105,7 +107,7 @@ def save_state(cfg: dict, state: dict) -> None:
 def next_published_sunday(state: dict, reference_day: date):
     candidates = []
     for row in state.get("history", []) or []:
-        if not isinstance(row, dict):
+        if not isinstance(row, dict) or not is_history_row_active(row):
             continue
         try:
             day = date.fromisoformat(str(row.get("date", "")))
