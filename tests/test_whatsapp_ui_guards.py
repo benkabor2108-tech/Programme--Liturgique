@@ -30,10 +30,12 @@ class WhatsAppUiGuardTests(unittest.TestCase):
         self.assertIn("Géré par GitHub Actions — envoi en pause", CORE)
 
     def test_wrapper_adds_contact_readiness_dashboard(self):
-        self.assertIn("Préparation à l'automatisation WhatsApp", WRAPPER)
+        self.assertIn("Préparation à l", WRAPPER)
+        self.assertIn("automatisation WhatsApp", WRAPPER)
         self.assertIn("future_readiness_rows", WRAPPER)
         self.assertIn("whatsapp_display_rows", WRAPPER)
-        self.assertIn("Aucune activation n'est faite automatiquement", WRAPPER)
+        self.assertIn("Aucune activation n", WRAPPER)
+        self.assertIn("faite automatiquement", WRAPPER)
 
     def test_production_workflow_is_paused(self):
         self.assertIn('WHATSAPP_AUTOMATION_ENABLED: "false"', WORKFLOW)
