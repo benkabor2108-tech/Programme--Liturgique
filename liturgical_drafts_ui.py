@@ -11,6 +11,7 @@ from liturgical_drafts_schedule import availability_for, is_major_event, major_c
 from liturgical_drafts_source import build_draft, fetch_liturgical_context, liturgical_season, normalize_text
 from liturgical_drafts_themes import AELF_ZONES, APP_TIMEZONE
 from liturgical_drafts_word import build_word_document
+from state_store import StateConflictError, save_state_if_revision
 
 
 INTENTION_LABELS = [
@@ -30,7 +31,7 @@ def format_refs(context):
 
 
 def persist_liturgical_state(state, show_success=False):
-    """Sauvegarde l'état complet dans la même ligne Supabase que l'application principale."""
+    """Sauvegarde avec révision optimiste dans la même ligne Supabase que l'application."""
     if st is None:
         return False
     try:
@@ -46,26 +47,47 @@ def persist_liturgical_state(state, show_success=False):
             st.error("Secrets Supabase absents.")
         return False
 
-    endpoint = f"{url}/rest/v1/liturgie_state?on_conflict=app_key"
-    headers = {
-        "apikey": api_key,
-        "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates,return=minimal",
-    }
-    payload = {"app_key": state_key, "state_json": state}
+    expected_revision = st.session_state.get("supabase_revision") if hasattr(st, "session_state") else None
+    if expected_revision is None:
+        message = "Révision Supabase inconnue. Rechargez l'état avant d'enregistrer le brouillon."
+        if hasattr(st, "session_state"):
+            st.session_state.supabase_conflict = True
+            st.session_state.supabase_message = message
+        st.error(message)
+        return False
+
     try:
-        response = requests.post(endpoint, headers=headers, json=payload, timeout=20)
-        response.raise_for_status()
+        new_revision = save_state_if_revision(
+            url,
+            api_key,
+            state_key,
+            state,
+            expected_revision,
+            timeout=20,
+        )
         if hasattr(st, "session_state"):
-            st.session_state.supabase_message = "Sauvegardé dans Supabase"
+            st.session_state.supabase_revision = new_revision
+            st.session_state.supabase_conflict = False
+            st.session_state.supabase_message = f"Sauvegardé dans Supabase · révision {new_revision}"
         if show_success:
-            st.success("Sauvegardé dans Supabase")
+            st.success(f"Sauvegardé dans Supabase · révision {new_revision}")
         return True
-    except Exception as exc:
+    except StateConflictError:
+        message = (
+            "Conflit de sauvegarde : les données ont changé depuis votre dernière lecture. "
+            "Le brouillon n'a pas écrasé la version distante. Rechargez depuis Supabase."
+        )
         if hasattr(st, "session_state"):
-            st.session_state.supabase_message = f"Sauvegarde Supabase impossible : {exc}"
+            st.session_state.supabase_conflict = True
+            st.session_state.supabase_message = message
+        st.error(message)
+        return False
+    except Exception as exc:
+        message = f"Sauvegarde Supabase impossible : {exc}"
+        if hasattr(st, "session_state"):
+            st.session_state.supabase_message = message
         if show_success:
-            st.error(f"Sauvegarde Supabase impossible : {exc}")
+            st.error(message)
         return False
 
 
