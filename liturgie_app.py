@@ -20,7 +20,13 @@ from state_store import (
     StateConflictError, StateNotFoundError, load_state_record, save_state_if_revision,
 )
 
-APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.9-whatsapp-readiness"
+from whatsapp_readiness import (
+    display_rows as whatsapp_display_rows,
+    future_readiness_rows,
+    readiness_summary,
+)
+
+APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.10-whatsapp-contact-readiness"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -473,6 +479,20 @@ def full_fresh_start(state):
 ''',
         "maintenance historique non destructive",
     )
+    source = _replace_once(
+        source,
+        '        with st.expander("📱 Numéros et consentements", expanded=False):\n',
+        '        st.markdown("### 🧭 Préparation à l\'automatisation WhatsApp")\n        _wa_rows = future_readiness_rows(state, reference_day=_now.date())\n        _wa_summary = readiness_summary(_wa_rows)\n        if _wa_rows:\n            _wa_c1, _wa_c2, _wa_c3, _wa_c4 = st.columns(4)\n            _wa_c1.metric("Dimanches futurs", _wa_summary["sundays"])\n            _wa_c2.metric("Affectations", _wa_summary["assignments"])\n            _wa_c3.metric("Prêtes", _wa_summary["ready"])\n            _wa_c4.metric("À compléter", _wa_summary["blocked"])\n\n            _wa_blocked = [row for row in _wa_rows if not row.get("ready")]\n            if _wa_blocked:\n                _wa_names = ", ".join(_wa_summary["blocker_names"])\n                st.warning(\n                    f"Automatisation maintenue en pause : {_wa_summary[\'blocked\']} affectation(s) "\n                    f"concernent des contacts incomplets. Membres à régulariser : {_wa_names}."\n                )\n                st.dataframe(\n                    whatsapp_display_rows(_wa_blocked),\n                    use_container_width=True,\n                    hide_index=True,\n                )\n                st.caption(\n                    "Renseignez uniquement un numéro réel et cochez le consentement après accord explicite du membre. "\n                    "Aucune activation n\'est faite automatiquement."\n                )\n            else:\n                st.success(\n                    "Tous les contacts des programmes futurs sont prêts. "\n                    "La réactivation automatique reste conditionnée au readiness GitHub/Meta."\n                )\n\n            with st.expander("Voir tous les membres programmés et leur état WhatsApp", expanded=False):\n                st.dataframe(\n                    whatsapp_display_rows(_wa_rows),\n                    use_container_width=True,\n                    hide_index=True,\n                )\n        else:\n            st.info("Aucun programme futur actif n\'est publié : aucune readiness WhatsApp à contrôler.")\n\n        with st.expander("📱 Numéros et consentements", expanded=False):\n',
+        "tableau de readiness WhatsApp",
+    )
+
+    source = _replace_once(
+        source,
+        '    st.subheader("🤖 Automatisation future")\n    st.write(\n        "L\'application est techniquement préparée pour une automatisation complète des rappels. "\n        "Cette évolution nécessitera un accès officiel à WhatsApp Business API, des modèles "\n        "de messages approuvés et un ordonnanceur externe fiable pour déclencher les envois "\n        "aux heures prévues."\n    )\n    st.success(\n        "Sécurité actuelle : l\'automatisation complète est désactivée. "\n        "Aucun rappel WhatsApp ne peut partir automatiquement à l\'insu du responsable."\n    )\n',
+        '    st.subheader("🤖 Automatisation Cloud API")\n    st.write(\n        "Le moteur WhatsApp Cloud API est piloté par GitHub Actions. Avant toute réactivation, "\n        "un contrôle de readiness vérifie le numéro expéditeur Meta, les templates approuvés "\n        "et la configuration des contacts réellement programmés."\n    )\n    st.success(\n        "Mode de sécurité actuel : l\'envoi automatique reste en pause tant que le readiness complet "\n        "n\'est pas vert. Les rappels assistés et les simulations restent disponibles."\n    )\n',
+        "guide WhatsApp actuel",
+    )
+
     return source
 
 
@@ -525,6 +545,9 @@ def main():
         "StateNotFoundError": StateNotFoundError,
         "load_state_record": load_state_record,
         "save_state_if_revision": save_state_if_revision,
+        "future_readiness_rows": future_readiness_rows,
+        "readiness_summary": readiness_summary,
+        "whatsapp_display_rows": whatsapp_display_rows,
     }
     try:
         exec(compile(source, str(CORE_PATH), "exec"), namespace, namespace)
