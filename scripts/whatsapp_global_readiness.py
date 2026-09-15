@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Verrou global de readiness avant tout envoi WhatsApp de production.
 
-Ce script lit l'état Supabase, contrôle toutes les affectations des dimanches futurs actifs
-et échoue si un seul membre programmé n'a pas de numéro valide, de consentement
-ou d'activation des rappels. Aucun numéro n'est affiché dans les logs.
+Ce script lit l'état Supabase, contrôle toutes les affectations futures actives
+du week-end (samedi + dimanche) et échoue si un seul membre programmé n'a pas
+de numéro valide, de consentement ou d'activation des rappels. Aucun numéro
+n'est affiché dans les logs.
 """
 from __future__ import annotations
 
@@ -29,7 +30,6 @@ def env(name: str, default: str = "") -> str:
     return str(os.getenv(name, default)).strip().strip("\"'")
 
 
-
 def automation_authorized(state: dict) -> bool:
     return bool(state.get("whatsapp_automation_authorized", False)) if isinstance(state, dict) else False
 
@@ -52,7 +52,7 @@ def blocker_lines(blocked: list[dict]) -> list[str]:
     seen: set[tuple[str, str]] = set()
     for row in blocked:
         code = str(row.get("code", "")).strip() or "?"
-        day = str(row.get("date_label", row.get("date", ""))).strip()
+        day = str(row.get("celebration_label") or row.get("date_label", row.get("date", ""))).strip()
         key = (day, code)
         if key in seen:
             continue
@@ -102,8 +102,8 @@ def main() -> int:
 
     print(
         "[global-readiness] "
-        f"dimanches={summary['sundays']} affectations={summary['assignments']} "
-        f"prêtes={summary['ready']} bloquées={summary['blocked']}"
+        f"célébrations={summary['celebrations']} samedis={summary['saturdays']} dimanches={summary['sundays']} "
+        f"affectations={summary['assignments']} prêtes={summary['ready']} bloquées={summary['blocked']}"
     )
     if blocked:
         for line in blocker_lines(blocked):
@@ -111,7 +111,7 @@ def main() -> int:
         print("[global-readiness] INCOMPLET — envoi de production interdit")
         return 2
 
-    print("[global-readiness] COMPLET — tous les programmes futurs actifs sont prêts")
+    print("[global-readiness] COMPLET — toutes les célébrations futures actives sont prêtes")
     return 0
 
 

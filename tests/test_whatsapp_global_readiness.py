@@ -9,25 +9,44 @@ class WhatsAppGlobalReadinessTests(unittest.TestCase):
         self.assertFalse(gate.automation_authorized({}))
         self.assertTrue(gate.automation_authorized({"whatsapp_automation_authorized": True}))
 
-    def test_blocks_if_any_future_assignment_is_not_ready(self):
+    def test_blocks_if_any_future_weekend_assignment_is_not_ready(self):
         state = {
-            "names": {"F1": "Lecteur F1", "M3": "Lecteur M3"},
+            "names": {"M1": "Samedi M1", "M3": "Dimanche M3"},
             "whatsapp_contacts": {
-                "F1": {"number": "+22670000000", "consent": True, "enabled": True},
+                "M1": {"number": "+22670000000", "consent": True, "enabled": True},
                 "M3": {"number": "", "consent": False, "enabled": False},
             },
             "history": [
-                {"date": "2026-10-04", "codes": {"r1": "F1", "r2": "M3"}},
-                {"date": "2026-10-11", "codes": {"r1": "F1"}},
+                {"date": "2026-10-03", "codes": {"r1": "M1"}},
+                {"date": "2026-10-04", "codes": {"r1": "M3"}},
             ],
         }
         summary, blocked = gate.evaluate_state(state, date(2026, 9, 15))
-        self.assertEqual(summary["sundays"], 2)
-        self.assertEqual(summary["assignments"], 3)
+        self.assertEqual(summary["celebrations"], 2)
+        self.assertEqual(summary["saturdays"], 1)
+        self.assertEqual(summary["sundays"], 1)
+        self.assertEqual(summary["assignments"], 2)
         self.assertEqual(summary["blocked"], 1)
         self.assertEqual(blocked[0]["code"], "M3")
 
-    def test_all_future_programs_must_be_green_not_only_next_sunday(self):
+    def test_saturday_blocker_alone_blocks_global_readiness(self):
+        state = {
+            "whatsapp_contacts": {
+                "M1": {"number": "", "consent": False, "enabled": False},
+                "F1": {"number": "+22670000000", "consent": True, "enabled": True},
+            },
+            "history": [
+                {"date": "2026-10-03", "codes": {"r1": "M1"}},
+                {"date": "2026-10-04", "codes": {"r1": "F1"}},
+            ],
+        }
+        summary, blocked = gate.evaluate_state(state, date(2026, 9, 15))
+        self.assertEqual(summary["ready"], 1)
+        self.assertEqual(summary["blocked"], 1)
+        self.assertEqual([row["code"] for row in blocked], ["M1"])
+        self.assertEqual(blocked[0]["service_day"], "samedi")
+
+    def test_all_future_programs_must_be_green_not_only_next_service(self):
         state = {
             "whatsapp_contacts": {
                 "F1": {"number": "+22670000000", "consent": True, "enabled": True},
@@ -35,7 +54,7 @@ class WhatsAppGlobalReadinessTests(unittest.TestCase):
             },
             "history": [
                 {"date": "2026-10-04", "codes": {"r1": "F1"}},
-                {"date": "2026-10-18", "codes": {"r1": "M5"}},
+                {"date": "2026-10-17", "codes": {"r1": "M5"}},
             ],
         }
         summary, blocked = gate.evaluate_state(state, date(2026, 9, 15))
@@ -45,11 +64,13 @@ class WhatsAppGlobalReadinessTests(unittest.TestCase):
 
     def test_blocker_lines_never_expose_phone_numbers(self):
         blocked = [{
-            "date_label": "04/10/2026",
+            "celebration_label": "Samedi 03/10/2026",
+            "date_label": "03/10/2026",
             "code": "M3",
             "reasons": ["numéro absent ou invalide", "consentement absent"],
         }]
         text = "\n".join(gate.blocker_lines(blocked))
+        self.assertIn("Samedi 03/10/2026", text)
         self.assertIn("M3", text)
         self.assertIn("consentement absent", text)
         self.assertNotIn("226", text)
