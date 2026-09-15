@@ -6,6 +6,7 @@ on:
       - feature/v3.10.9-whatsapp-readiness
     paths:
       - scripts/_patch_v3109.py
+      - .github/workflows/apply-v3109-whatsapp-readiness.yml
 
 permissions:
   contents: write
