@@ -5,8 +5,7 @@ on:
     branches:
       - feature/v3.10.14-anticipated-mass-references
     paths:
-      - scripts/_patch_v31014_anticipated_refs.py
-      - scripts/_repair_v31014_patcher.py
+      - scripts/_patch_v31014_manual_ui.py
       - .github/workflows/_apply_v31014_anticipated_refs.yml
   workflow_dispatch:
 
@@ -28,27 +27,11 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Repair patcher escaping
-        run: python scripts/_repair_v31014_patcher.py
+      - name: Validate manual UI patcher
+        run: python -m py_compile scripts/_patch_v31014_manual_ui.py
 
-      - name: Validate patcher syntax
-        run: python -m py_compile scripts/_patch_v31014_anticipated_refs.py
-
-      - name: Apply guarded patch
-        run: python scripts/_patch_v31014_anticipated_refs.py
-
-      - name: Update version regression guard
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("tests/test_whatsapp_ui_guards.py")
-          text = path.read_text(encoding="utf-8")
-          old = "v3.10.13-weekend-generation"
-          new = "v3.10.14-anticipated-mass-references"
-          if text.count(old) != 1:
-              raise SystemExit(f"Unexpected version guard count: {text.count(old)}")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          PY
+      - name: Apply manual Sunday-reference UI patch
+        run: python scripts/_patch_v31014_manual_ui.py
 
       - name: Install dependencies
         run: |
@@ -80,10 +63,10 @@ jobs:
         run: |
           git config user.name "benkabor2108-tech"
           git config user.email "benkabor2108@gmail.com"
-          git add liturgie_app.py weekend_generation.py tests/test_weekend_generation.py tests/test_whatsapp_ui_guards.py
+          git add liturgie_app.py tests/test_weekend_generation.py
           if git diff --cached --quiet; then
             echo "No product changes to commit."
           else
-            git commit -m "fix: reuse Sunday readings for Saturday anticipated Mass"
+            git commit -m "fix: show Sunday reference dates for manual readings"
             git push origin HEAD:feature/v3.10.14-anticipated-mass-references
           fi
