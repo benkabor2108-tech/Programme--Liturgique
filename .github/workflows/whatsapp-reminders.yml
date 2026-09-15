@@ -62,10 +62,10 @@ jobs:
           WHATSAPP_TEMPLATE_WEDNESDAY: "rappel_liturgie_mercredi"
           WHATSAPP_TEMPLATE_FRIDAY: "rappel_liturgie_vendredi"
           WHATSAPP_TEMPLATE_LANGUAGE: "fr"
-          # v3.10.11 : l'envoi reste en pause. Si ce verrou passe un jour à true,
-          # le gate global ci-dessous exige que TOUS les programmes futurs actifs
-          # soient entièrement prêts avant le moindre envoi de production.
-          WHATSAPP_AUTOMATION_ENABLED: "false"
+          # v3.10.12 : l'infrastructure peut s'exécuter, mais l'envoi réel exige
+          # l'autorisation persistée par l'administrateur principal ET un gate
+          # global entièrement vert pour tous les programmes futurs actifs.
+          WHATSAPP_AUTOMATION_ENABLED: "true"
           WHATSAPP_REMINDER_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.reminder_kind || 'auto' }}
           WHATSAPP_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
         shell: bash
