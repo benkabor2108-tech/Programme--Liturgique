@@ -1,7 +1,7 @@
 """Calcul pur de la readiness WhatsApp des programmes liturgiques publiés.
 
 Ce module ne lit ni n'écrit Supabase et ne contacte pas Meta. Il évalue
-uniquement les programmes futurs actifs et la configuration locale des contacts
+uniquement les dimanches futurs actifs et la configuration locale des contacts
 (numéro, consentement, activation) afin d'alimenter l'interface et les tests.
 """
 from __future__ import annotations
@@ -63,7 +63,7 @@ def scheduled_assignments(row: dict) -> list[tuple[str, str]]:
 
 
 def future_readiness_rows(state: dict | None, reference_day: date | None = None) -> list[dict]:
-    """Construit la readiness de toutes les affectations futures encore actives."""
+    """Construit la readiness des affectations des dimanches futurs encore actifs."""
     state = state if isinstance(state, dict) else {}
     reference_day = reference_day or date.today()
     names = state.get("names", {}) if isinstance(state.get("names"), dict) else {}
@@ -76,6 +76,8 @@ def future_readiness_rows(state: dict | None, reference_day: date | None = None)
         try:
             day = date.fromisoformat(str(row.get("date", "")))
         except (TypeError, ValueError):
+            continue
+        if day.weekday() != 6:
             continue
         if day >= reference_day:
             dated_rows.append((day, row))

@@ -28,6 +28,17 @@ class WhatsAppAutomationTests(unittest.TestCase):
         self.assertEqual(sunday, date(2026, 10, 11))
         self.assertEqual(row["codes"]["r1"], "F2")
 
+    def test_next_published_sunday_ignores_saturday_program(self):
+        state = {
+            "history": [
+                {"date": "2026-10-03", "codes": {"r1": "F1"}},
+                {"date": "2026-10-04", "codes": {"r1": "F2"}},
+            ]
+        }
+        sunday, row = wa.next_published_sunday(state, date(2026, 10, 1))
+        self.assertEqual(sunday, date(2026, 10, 4))
+        self.assertEqual(row["codes"]["r1"], "F2")
+
     def test_contact_readiness_requires_number_consent_and_activation(self):
         number, ready, reasons = wa.contact_readiness(
             {"number": "+22670000000", "consent": True, "enabled": True}

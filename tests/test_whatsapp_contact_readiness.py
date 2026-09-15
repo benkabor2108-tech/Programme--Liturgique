@@ -61,6 +61,21 @@ class WhatsAppContactReadinessTests(unittest.TestCase):
         self.assertTrue(next(row for row in rows if row["code"] == "F1")["ready"])
         self.assertFalse(next(row for row in rows if row["code"] == "M1")["ready"])
 
+    def test_future_rows_ignore_saturday_programs(self):
+        state = {
+            "names": {"F1": "Samedi", "F2": "Dimanche"},
+            "whatsapp_contacts": {
+                "F1": {"number": "+22670000000", "consent": True, "enabled": True},
+                "F2": {"number": "+22671000000", "consent": True, "enabled": True},
+            },
+            "history": [
+                {"date": "2026-10-03", "codes": {"r1": "F1"}},
+                {"date": "2026-10-04", "codes": {"r1": "F2"}},
+            ],
+        }
+        rows = future_readiness_rows(state, reference_day=date(2026, 10, 1))
+        self.assertEqual([row["code"] for row in rows], ["F2"])
+
     def test_summary_counts_unique_blockers_and_sundays(self):
         rows = [
             {"date": "2026-10-04", "code": "F1", "name": "Alice", "ready": True},

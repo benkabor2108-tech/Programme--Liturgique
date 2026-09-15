@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verrou global de readiness avant tout envoi WhatsApp de production.
 
-Ce script lit l'état Supabase, contrôle toutes les affectations futures actives
+Ce script lit l'état Supabase, contrôle toutes les affectations des dimanches futurs actifs
 et échoue si un seul membre programmé n'a pas de numéro valide, de consentement
 ou d'activation des rappels. Aucun numéro n'est affiché dans les logs.
 """
