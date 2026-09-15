@@ -10,7 +10,7 @@ WORKFLOW = (ROOT / ".github" / "workflows" / "whatsapp-reminders.yml").read_text
 
 class WhatsAppUiGuardTests(unittest.TestCase):
     def test_checkpoint_version_is_contact_readiness(self):
-        self.assertIn("v3.10.13-weekend-generation", WRAPPER)
+        self.assertIn("v3.10.14-anticipated-mass-references", WRAPPER)
 
     def test_streamlit_next_sunday_ignores_cancelled_history(self):
         marker = "def next_published_sunday(state, reference_day=None):"

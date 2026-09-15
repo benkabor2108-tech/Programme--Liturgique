@@ -25,9 +25,14 @@ from whatsapp_readiness import (
     future_readiness_rows,
     readiness_summary,
 )
-from weekend_generation import service_day_label, weekend_service_days
+from weekend_generation import (
+    liturgical_reference_day,
+    liturgical_reference_days,
+    service_day_label,
+    weekend_service_days,
+)
 
-APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.13-weekend-generation"
+APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.14-anticipated-mass-references"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -74,6 +79,7 @@ def _runtime_core_source():
         '            "date": sunday.isoformat(),\n            "Dimanche": sunday.strftime("%d/%m/%Y"),\n',
         '            "date": sunday.isoformat(),\n'
         '            "jour_service": "samedi" if sunday.weekday() == 5 else "dimanche",\n'
+        '            "date_reference": liturgical_reference_day(sunday).isoformat(),\n'
         '            "Dimanche": f"{service_day_label(sunday)} {sunday.strftime(\'%d/%m/%Y\')}",\n',
         "libellé samedi ou dimanche",
     )
@@ -85,14 +91,84 @@ def _runtime_core_source():
     )
     source = _replace_once(
         source,
+        '''def fetch_month_aelf_refs(dates, zone):
+    refs = {}
+    errors = {}
+    for day in dates:
+        try:
+            refs[day.isoformat()] = fetch_aelf_refs(day.isoformat(), zone)
+        except Exception as exc:
+            errors[day.isoformat()] = str(exc)
+    return refs, errors
+''',
+        '''def fetch_month_aelf_refs(dates, zone):
+    refs = {}
+    errors = {}
+    for day in dates:
+        reference_day = liturgical_reference_day(day)
+        try:
+            item = dict(fetch_aelf_refs(reference_day.isoformat(), zone))
+            item["reference_date"] = reference_day.isoformat()
+            if day.weekday() == 5:
+                item["source"] = f"{item.get('source', 'AELF')} · messe anticipée du dimanche"
+            refs[day.isoformat()] = item
+        except Exception as exc:
+            errors[day.isoformat()] = str(exc)
+    return refs, errors
+''',
+        "AELF samedi = dimanche suivant",
+    )
+    source = _replace_once(
+        source,
+        '''def parse_refs(text, dates):
+    refs = {d.isoformat(): {"r1": "", "r2": "", "ev": ""} for d in dates}
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) >= 4 and parts[0] in refs:
+            refs[parts[0]] = {"r1": parts[1], "r2": parts[2], "ev": parts[3], "source": "Saisie manuelle"}
+    return refs
+''',
+        '''def parse_refs(text, dates):
+    dates = list(dates)
+    raw_refs = {}
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) >= 4:
+            raw_refs[parts[0]] = {"r1": parts[1], "r2": parts[2], "ev": parts[3], "source": "Saisie manuelle"}
+
+    refs = {}
+    for day in dates:
+        reference_day = liturgical_reference_day(day)
+        item = raw_refs.get(reference_day.isoformat())
+        # Compatibilité avec une ancienne saisie où le samedi avait sa propre ligne.
+        if item is None:
+            item = raw_refs.get(day.isoformat())
+        item = dict(item or {"r1": "", "r2": "", "ev": "", "source": "Saisie manuelle"})
+        item["reference_date"] = reference_day.isoformat()
+        if day.weekday() == 5:
+            item["source"] = "Saisie manuelle · messe anticipée du dimanche"
+        refs[day.isoformat()] = item
+    return refs
+''',
+        "saisie manuelle samedi = dimanche suivant",
+    )
+    source = _replace_once(
+        source,
         '            st.info("📖 Les références des dimanches seront récupérées automatiquement depuis l\'API AELF au moment de la génération. Aucun copier-coller n\'est nécessaire.")\n',
-        '            st.info("📖 Les références des samedis et dimanches seront récupérées automatiquement depuis l\'API AELF au moment de la génération. Aucun copier-coller n\'est nécessaire.")\n',
+        '            st.info("📖 Le samedi soir est traité comme messe anticipée : il reprend automatiquement les mêmes références bibliques que le dimanche qui suit, y compris si ce dimanche est dans le mois suivant.")\n',
         "texte AELF week-end",
     )
     source = _replace_once(
         source,
         '                            "Dimanche": d.strftime("%d/%m/%Y"),\n',
-        '                            "Célébration": f"{service_day_label(d)} {d.strftime(\'%d/%m/%Y\')}",\n',
+        '                            "Célébration": f"{service_day_label(d)} {d.strftime(\'%d/%m/%Y\')}",\n'
+        '                            "Références du": liturgical_reference_day(d).strftime(\'%d/%m/%Y\'),\n',
         "prévisualisation AELF week-end",
     )
     source = _replace_once(
@@ -645,6 +721,8 @@ def main():
         "whatsapp_display_rows": whatsapp_display_rows,
         "weekend_service_days": weekend_service_days,
         "service_day_label": service_day_label,
+        "liturgical_reference_day": liturgical_reference_day,
+        "liturgical_reference_days": liturgical_reference_days,
     }
     try:
         exec(compile(source, str(CORE_PATH), "exec"), namespace, namespace)
