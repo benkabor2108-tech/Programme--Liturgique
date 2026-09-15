@@ -61,32 +61,55 @@ class WhatsAppContactReadinessTests(unittest.TestCase):
         self.assertTrue(next(row for row in rows if row["code"] == "F1")["ready"])
         self.assertFalse(next(row for row in rows if row["code"] == "M1")["ready"])
 
-    def test_future_rows_ignore_saturday_programs(self):
+    def test_future_rows_include_saturday_and_sunday_programs(self):
         state = {
-            "names": {"F1": "Samedi", "F2": "Dimanche"},
+            "names": {"M1": "Samedi", "F2": "Dimanche"},
             "whatsapp_contacts": {
-                "F1": {"number": "+22670000000", "consent": True, "enabled": True},
+                "M1": {"number": "+22670000000", "consent": True, "enabled": True},
                 "F2": {"number": "+22671000000", "consent": True, "enabled": True},
             },
             "history": [
-                {"date": "2026-10-03", "codes": {"r1": "F1"}},
+                {"date": "2026-10-03", "codes": {"r1": "M1"}},
                 {"date": "2026-10-04", "codes": {"r1": "F2"}},
+                {"date": "2026-10-05", "codes": {"r1": "F2"}},
             ],
         }
         rows = future_readiness_rows(state, reference_day=date(2026, 10, 1))
-        self.assertEqual([row["code"] for row in rows], ["F2"])
+        self.assertEqual([row["code"] for row in rows], ["M1", "F2"])
+        self.assertEqual([row["service_day"] for row in rows], ["samedi", "dimanche"])
+        self.assertEqual(rows[0]["celebration_label"], "Samedi 03/10/2026")
+        self.assertEqual(rows[1]["celebration_label"], "Dimanche 04/10/2026")
 
-    def test_summary_counts_unique_blockers_and_sundays(self):
+    def test_saturday_three_moore_readers_are_all_checked(self):
+        state = {
+            "names": {"M1": "A", "M2": "B", "M3": "C"},
+            "whatsapp_contacts": {
+                "M1": {"number": "+22670000001", "consent": True, "enabled": True},
+                "M2": {"number": "+22670000002", "consent": True, "enabled": True},
+                "M3": {"number": "", "consent": False, "enabled": False},
+            },
+            "history": [
+                {"date": "2026-10-03", "codes": {"r1": "M1", "r2": "M2", "m_mon": "M3"}},
+            ],
+        }
+        rows = future_readiness_rows(state, reference_day=date(2026, 10, 1))
+        self.assertEqual([row["code"] for row in rows], ["M1", "M2", "M3"])
+        self.assertEqual(sum(1 for row in rows if not row["ready"]), 1)
+        self.assertEqual(next(row for row in rows if not row["ready"])["code"], "M3")
+
+    def test_summary_counts_unique_blockers_and_celebrations(self):
         rows = [
-            {"date": "2026-10-04", "code": "F1", "name": "Alice", "ready": True},
-            {"date": "2026-10-04", "code": "M3", "name": "Brigitte", "ready": False},
-            {"date": "2026-10-11", "code": "M3", "name": "Brigitte", "ready": False},
-            {"date": "2026-10-11", "code": "F2", "name": "Claire", "ready": True},
+            {"date": "2026-10-03", "service_day": "samedi", "code": "M1", "name": "A", "ready": True},
+            {"date": "2026-10-04", "service_day": "dimanche", "code": "M3", "name": "Brigitte", "ready": False},
+            {"date": "2026-10-11", "service_day": "dimanche", "code": "M3", "name": "Brigitte", "ready": False},
+            {"date": "2026-10-11", "service_day": "dimanche", "code": "F2", "name": "Claire", "ready": True},
         ]
         summary = readiness_summary(rows)
         self.assertEqual(summary["assignments"], 4)
         self.assertEqual(summary["ready"], 2)
         self.assertEqual(summary["blocked"], 2)
+        self.assertEqual(summary["celebrations"], 3)
+        self.assertEqual(summary["saturdays"], 1)
         self.assertEqual(summary["sundays"], 2)
         self.assertEqual(summary["blocker_codes"], ["M3"])
         self.assertEqual(summary["blocker_names"], ["Brigitte"])
@@ -94,10 +117,11 @@ class WhatsAppContactReadinessTests(unittest.TestCase):
     def test_display_rows_never_exposes_phone_number(self):
         rows = [
             {
-                "date_label": "04/10/2026",
+                "celebration_label": "Samedi 03/10/2026",
+                "date_label": "03/10/2026",
                 "name": "Brigitte",
                 "code": "M3",
-                "role": "1re lecture",
+                "role": "Monition + P.U. — Mooré",
                 "status": "⛔ À compléter",
                 "reason_label": "numéro absent ou invalide",
                 "number": "+22670000000",
@@ -105,6 +129,7 @@ class WhatsAppContactReadinessTests(unittest.TestCase):
         ]
         projected = display_rows(rows)
         self.assertEqual(len(projected), 1)
+        self.assertEqual(projected[0]["Célébration"], "Samedi 03/10/2026")
         self.assertNotIn("number", projected[0])
         self.assertNotIn("Numéro", projected[0])
         self.assertNotIn("+22670000000", str(projected[0]))
