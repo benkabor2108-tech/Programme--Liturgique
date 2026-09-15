@@ -220,6 +220,13 @@ def _runtime_core_source():
         "rappels WhatsApp réservés aux dimanches",
     )
 
+    source = _replace_once(
+        source,
+        '            example = "\\n".join(f"{d.isoformat()} |  |  | " for d in month_sundays)\n            refs_text = st.text_area(\n                "AAAA-MM-JJ | 1re lecture | 2e lecture | Évangile",\n                value=example,\n                height=max(160, 38 * len(month_sundays)),\n                key=f"refs_{year}_{month}",\n            )\n',
+        '            reference_days = liturgical_reference_days(month_sundays)\n            example = "\\n".join(f"{d.isoformat()} |  |  | " for d in reference_days)\n            refs_text = st.text_area(\n                "Dimanche de référence (AAAA-MM-JJ) | 1re lecture | 2e lecture | Évangile",\n                value=example,\n                height=max(160, 38 * len(reference_days)),\n                key=f"refs_{year}_{month}",\n            )\n',
+        "saisie manuelle par dimanche de référence",
+    )
+
     state_marker = '        "whatsapp_send_log": {},\n        "audit_log": [],\n'
     if source.count(state_marker) < 2:
         raise RuntimeError("Structure d'état inattendue : impossible d'activer la persistance des brouillons liturgiques.")

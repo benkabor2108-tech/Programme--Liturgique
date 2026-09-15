@@ -68,6 +68,8 @@ class WeekendGenerationTests(unittest.TestCase):
         self.assertIn("liturgical_reference_day", wrapper)
         self.assertIn("AELF samedi = dimanche suivant", wrapper)
         self.assertIn("saisie manuelle samedi = dimanche suivant", wrapper)
+        self.assertIn("saisie manuelle par dimanche de référence", wrapper)
+        self.assertIn("reference_days = liturgical_reference_days(month_sundays)", wrapper)
         # Le cœur historique reste inchangé; la correction passe par la couche protégée.
         self.assertIn("def sundays(year, month):", core)
         self.assertIn("d.weekday() == 6", core)
