@@ -47,7 +47,7 @@ class WhatsAppUiGuardTests(unittest.TestCase):
         self.assertIn("reminder_preview_rows", WRAPPER)
         self.assertIn("reminder_preview_summary", WRAPPER)
         self.assertIn("reminder_preview_display_rows", WRAPPER)
-        self.assertIn("Aucun message n'est envoyé depuis cet aperçu", WRAPPER)
+        self.assertIn("Cet aperçu n’envoie aucun message", WRAPPER)
         self.assertIn("Mercredi", PREVIEW)
         self.assertIn("Vendredi", PREVIEW)
         self.assertNotIn('"number"', PREVIEW)
