@@ -23,6 +23,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from history_protection import is_history_row_active
 
 APP_VERSION = "2026.09.02-persistant-supabase-v3.9.6-correctif-cycle15"
 TABLE_NAME = "liturgie_state"
@@ -384,6 +385,8 @@ def next_published_sunday(state, reference_day=None):
     reference_day = reference_day or now_ouaga().date()
     candidates = []
     for row in state.get("history", []) or []:
+        if not is_history_row_active(row):
+            continue
         try:
             day = date.fromisoformat(str(row.get("date", "")))
         except Exception:
@@ -465,7 +468,8 @@ def build_whatsapp_automation_jobs(state, sunday, row):
             number = str(contact.get("number", "")).strip()
             consent = bool(contact.get("consent", False))
             enabled = bool(contact.get("enabled", False))
-            ready = bool(number and consent and enabled)
+            normalized_number, _number_error = normalize_whatsapp_number(number)
+            ready = bool(normalized_number and consent and enabled)
             send_key = whatsapp_send_key(sunday, reminder_kind, code)
             jobs.append({
                 "member_code": code,
@@ -557,6 +561,14 @@ def render_whatsapp_automation_ready(state):
     ne sont pas activés.
     """
     st.subheader("🤖 Automatisation complète — préparation")
+    st.warning(
+        "Envoi automatique GitHub Actions en pause de sécurité dans cette version : "
+        "aucun rappel Cloud API ne partira tant que la validation finale Meta et contacts n'est pas levée."
+    )
+    st.caption(
+        "La production automatique est orchestrée par GitHub Actions. "
+        "Streamlit ne peut pas lire les secrets GitHub ni confirmer leur état en temps réel."
+    )
     config = whatsapp_cloud_config()
     required, complete, active = whatsapp_cloud_readiness(config)
 
@@ -564,8 +576,8 @@ def render_whatsapp_automation_ready(state):
         st.success("API WhatsApp configurée et autorisée côté application.")
     else:
         st.info(
-            "Mode sécurisé : automatisation désactivée. "
-            "Aucun message WhatsApp ne peut partir automatiquement depuis cette version."
+            "Configuration locale Streamlit inactive. "
+            "Les envois automatiques de production sont gérés séparément par GitHub Actions."
         )
 
     checklist_rows = [
@@ -578,7 +590,7 @@ def render_whatsapp_automation_ready(state):
     })
     checklist_rows.append({
         "Élément": "Ordonnanceur externe mercredi/vendredi 18 h 30",
-        "État": "À brancher",
+        "État": "Géré par GitHub Actions — envoi en pause 🔒",
     })
     st.dataframe(checklist_rows, use_container_width=True, hide_index=True)
 
@@ -615,10 +627,9 @@ def render_whatsapp_automation_ready(state):
         )
 
         st.markdown(
-            "**Pour passer à l'envoi automatique plus tard :** "
-            "il restera à renseigner les identifiants API réels, faire approuver "
-            "les deux modèles WhatsApp, puis brancher un ordonnanceur fiable. "
-            "Aucun secret n'est nécessaire aujourd'hui."
+            "**Pour réactiver l'envoi automatique :** vérifier les contacts du prochain dimanche, "
+            "confirmer que les deux templates Meta sont APPROVED dans la bonne langue, puis lever "
+            "la pause dans le workflow GitHub. Les numéros et secrets restent masqués."
         )
 
 
@@ -654,6 +665,12 @@ def render_whatsapp_template_editor(state):
         "Seul l'administrateur principal peut modifier ces textes. "
         "Conservez obligatoirement les variables {nom}, {date} et {role} : "
         "elles sont remplacées automatiquement lors de la préparation du message."
+    )
+
+    st.info(
+        "Ces textes pilotent l'envoi assisté via WhatsApp (wa.me). "
+        "L'envoi automatique Cloud API utilise des templates Meta approuvés séparément ; "
+        "modifier ce texte ne modifie pas le template enregistré chez Meta."
     )
 
     current = state.get("whatsapp_templates", {}) if isinstance(state.get("whatsapp_templates"), dict) else {}
@@ -840,7 +857,8 @@ def render_whatsapp_reminder_sender(state):
         number = str(contact.get("number", "")).strip()
         consent = bool(contact.get("consent", False))
         enabled = bool(contact.get("enabled", False))
-        ready = bool(number and consent and enabled)
+        normalized_number, _number_error = normalize_whatsapp_number(number)
+        ready = bool(normalized_number and consent and enabled)
         role = whatsapp_role_for_code(next_row, code)
         name = state.get("names", {}).get(code, code)
         sent = whatsapp_send_key(next_day, reminder_kind, code) in log

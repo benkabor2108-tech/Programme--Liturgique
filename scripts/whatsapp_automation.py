@@ -121,6 +121,20 @@ def normalize_number(value: str) -> str:
     return digits
 
 
+def contact_readiness(contact: dict) -> tuple[str, bool, list[str]]:
+    """Évalue un contact sans exposer son numéro dans les diagnostics."""
+    contact = contact if isinstance(contact, dict) else {}
+    number = normalize_number(contact.get("number", ""))
+    reasons = []
+    if not number:
+        reasons.append("numéro absent ou invalide")
+    if not bool(contact.get("consent")):
+        reasons.append("consentement absent")
+    if not bool(contact.get("enabled")):
+        reasons.append("rappels désactivés")
+    return number, not reasons, reasons
+
+
 def role_for_code(row: dict, code: str) -> str:
     codes = row.get("codes", {}) if isinstance(row.get("codes"), dict) else {}
     lang = "Français" if str(code).startswith("F") else "Mooré"
@@ -155,8 +169,7 @@ def build_jobs(state: dict, sunday: date, row: dict, kind: str) -> list[dict]:
         contact = contacts.get(code, {})
         if not isinstance(contact, dict):
             contact = {}
-        number = normalize_number(contact.get("number", ""))
-        ready = bool(number and contact.get("consent") and contact.get("enabled"))
+        number, ready, not_ready_reasons = contact_readiness(contact)
         key = send_key(sunday, kind, code)
         jobs.append({
             "code": code,
@@ -164,6 +177,7 @@ def build_jobs(state: dict, sunday: date, row: dict, kind: str) -> list[dict]:
             "role": role_for_code(row, code),
             "number": number,
             "ready": ready,
+            "not_ready_reasons": not_ready_reasons,
             "already_sent": key in log,
             "send_key": key,
         })
@@ -276,6 +290,17 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--kind", choices=["auto", "mercredi", "vendredi"], default=env("WHATSAPP_REMINDER_KIND", "auto"))
     parser.add_argument("--reference-date", help="Date YYYY-MM-DD pour un test reproductible.")
+    parser.add_argument(
+        "--readiness-only",
+        action="store_true",
+        help="Contrôle le prochain dimanche sans envoyer ni journaliser.",
+    )
+    parser.add_argument(
+        "--require-complete",
+        action="store_true",
+        default=as_bool(env("WHATSAPP_REQUIRE_COMPLETE", "false")),
+        help="Échoue en mode readiness si un contact ou un paramètre WhatsApp manque.",
+    )
     args = parser.parse_args()
 
     try:
@@ -300,6 +325,26 @@ def main() -> int:
         print("[info] Aucun dimanche futur publié; aucun rappel à envoyer.")
         return 0
 
+    if args.readiness_only:
+        jobs = build_jobs(state, sunday, row, "mercredi")
+        ready_jobs = [job for job in jobs if job["ready"]]
+        not_ready = [job for job in jobs if not job["ready"]]
+        missing_config = whatsapp_config_missing(cfg)
+        print(
+            f"[readiness] dimanche={sunday:%d/%m/%Y} "
+            f"prêts={len(ready_jobs)} non_configurés={len(not_ready)}"
+        )
+        for job in not_ready:
+            reasons = ", ".join(job.get("not_ready_reasons", [])) or "configuration incomplète"
+            print(f"[warning] {job['code']} — {job['name']} — {reasons}")
+        if missing_config:
+            print("[warning] paramètres WhatsApp manquants: " + ", ".join(missing_config))
+        if args.require_complete and (not_ready or missing_config):
+            print("[readiness] INCOMPLET")
+            return 2
+        print("[readiness] COMPLET")
+        return 0
+
     expected_day = reminder_date(sunday, kind)
     if reference_day != expected_day:
         print(f"[info] Aucun envoi aujourd'hui: rappel {kind} prévu le {expected_day:%d/%m/%Y}.")
@@ -310,6 +355,9 @@ def main() -> int:
     not_ready = [j for j in jobs if not j["ready"]]
     already_sent = [j for j in jobs if j["already_sent"]]
     print(f"[plan] dimanche={sunday:%d/%m/%Y} rappel={kind} prêts={len(pending)} déjà_envoyés={len(already_sent)} non_configurés={len(not_ready)}")
+    for job in not_ready:
+        reasons = ", ".join(job.get("not_ready_reasons", [])) or "configuration incomplète"
+        print(f"[warning] {job['code']} — {job['name']} — {reasons}")
 
     if cfg["dry_run"]:
         for job in pending:

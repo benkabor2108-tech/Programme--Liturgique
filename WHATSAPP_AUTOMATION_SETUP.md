@@ -69,6 +69,7 @@ Dans **Settings → Secrets and variables → Actions → New repository secret*
 - `WHATSAPP_GRAPH_API_VERSION`
 - `WHATSAPP_PHONE_NUMBER_ID`
 - `WHATSAPP_ACCESS_TOKEN`
+- `WHATSAPP_WABA_ID` (recommandé pour vérifier automatiquement le statut des templates Meta)
 - `WHATSAPP_TEMPLATE_WEDNESDAY`
 - `WHATSAPP_TEMPLATE_FRIDAY`
 - `WHATSAPP_TEMPLATE_LANGUAGE`
@@ -110,3 +111,20 @@ Le moteur :
 ## Remarque sur l'heure
 
 GitHub Actions utilise UTC pour `cron`. Ouagadougou est en UTC+0, donc `30 18 * * 3` et `30 18 * * 5` correspondent à 18 h 30 heure de Ouagadougou. Les exécutions planifiées de GitHub Actions peuvent parfois démarrer avec quelques minutes de retard ; le moteur vérifie néanmoins la bonne date de rappel avant tout envoi.
+
+
+## Garde de sécurité v3.10.9
+
+L'envoi automatique de production est volontairement **en pause** tant que le contrôle de readiness n'est pas complet. Le moteur et les dry-runs restent disponibles, ainsi que l'envoi assisté depuis l'application.
+
+Le workflow `whatsapp-readiness.yml` vérifie sans envoyer de message :
+
+- l'accès au numéro expéditeur Meta ;
+- la configuration du prochain dimanche publié ;
+- le numéro, le consentement et l'activation pour chaque membre programmé ;
+- l'absence de programme annulé dans la cible ;
+- et, si `WHATSAPP_WABA_ID` est configuré, le statut et la langue des deux templates Meta.
+
+La présence d'un contact non prêt ne doit jamais être contournée en inventant un consentement ou un numéro. Le contact est simplement exclu des envois jusqu'à régularisation.
+
+Les textes éditables dans Streamlit servent à l'envoi assisté `wa.me`. Les templates utilisés par la Cloud API sont gérés et approuvés séparément dans Meta ; modifier un texte Streamlit ne modifie pas le template Meta.
