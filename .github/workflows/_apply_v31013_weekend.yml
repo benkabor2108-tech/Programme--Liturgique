@@ -65,11 +65,12 @@ jobs:
         run: |
           git config user.name "benkabor2108-tech"
           git config user.email "benkabor2108@gmail.com"
+          # La CI est mise à jour séparément via le connecteur GitHub, car le
+          # token Actions n'a pas la permission workflows.
           git add liturgie_app.py weekend_generation.py whatsapp_readiness.py \
             scripts/whatsapp_automation.py scripts/whatsapp_global_readiness.py \
             tests/test_weekend_generation.py tests/test_whatsapp_automation.py \
-            tests/test_whatsapp_contact_readiness.py tests/test_whatsapp_ui_guards.py \
-            .github/workflows/ci.yml
+            tests/test_whatsapp_contact_readiness.py tests/test_whatsapp_ui_guards.py
           if git diff --cached --quiet; then
             echo "No product changes to commit."
           else
