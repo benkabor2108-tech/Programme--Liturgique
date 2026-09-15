@@ -6,6 +6,7 @@ on:
       - feature/v3.10.14-anticipated-mass-references
     paths:
       - scripts/_patch_v31014_anticipated_refs.py
+      - scripts/_repair_v31014_patcher.py
       - .github/workflows/_apply_v31014_anticipated_refs.yml
   workflow_dispatch:
 
@@ -26,6 +27,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+
+      - name: Repair patcher escaping
+        run: python scripts/_repair_v31014_patcher.py
 
       - name: Validate patcher syntax
         run: python -m py_compile scripts/_patch_v31014_anticipated_refs.py
