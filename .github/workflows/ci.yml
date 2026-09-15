@@ -34,6 +34,7 @@ jobs:
           python -m py_compile history_protection.py
           python -m py_compile state_store.py
           python -m py_compile whatsapp_readiness.py
+          python -m py_compile whatsapp_reminder_preview.py
           python -m py_compile weekend_generation.py
           python -m py_compile liturgical_drafts.py
           python -m py_compile liturgical_drafts_themes.py
@@ -47,6 +48,7 @@ jobs:
           python -m py_compile tests/test_whatsapp_automation.py
           python -m py_compile tests/test_whatsapp_contact_readiness.py
           python -m py_compile tests/test_whatsapp_global_readiness.py
+          python -m py_compile tests/test_whatsapp_reminder_preview.py
           python -m py_compile tests/test_whatsapp_ui_guards.py
           python -m py_compile tests/test_weekend_generation.py
 
@@ -60,6 +62,7 @@ jobs:
           python -m unittest tests/test_whatsapp_automation.py -v
           python -m unittest tests/test_whatsapp_contact_readiness.py -v
           python -m unittest tests/test_whatsapp_global_readiness.py -v
+          python -m unittest tests/test_whatsapp_reminder_preview.py -v
           python -m unittest tests/test_whatsapp_ui_guards.py -v
           python -m unittest tests/test_weekend_generation.py -v
 
