@@ -1,0 +1,163 @@
+name: WhatsApp readiness
+
+on:
+  schedule:
+    # Lundi 08 h 00 à Ouagadougou (UTC+0) : contrôle avant les rappels du mercredi/vendredi.
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: whatsapp-readiness
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install minimal dependency
+        run: python -m pip install requests
+
+      - name: Compile WhatsApp engine
+        run: python -m py_compile scripts/whatsapp_automation.py
+
+      - name: Validate Meta sender credentials without sending
+        env:
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "").strip().strip('"').strip("'")
+          token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip().strip('"').strip("'")
+          if not phone_id or not token:
+              raise SystemExit("READINESS INCOMPLET: identifiants Meta absents")
+
+          response = requests.get(
+              f"https://graph.facebook.com/v25.0/{phone_id}",
+              params={"fields": "verified_name"},
+              headers={"Authorization": f"Bearer {token}"},
+              timeout=25,
+          )
+          print("meta_sender_http_status", response.status_code)
+          if not response.ok:
+              raise SystemExit(f"READINESS INCOMPLET: Meta sender HTTP {response.status_code}")
+          body = response.json()
+          if not isinstance(body, dict) or not body.get("verified_name"):
+              raise SystemExit("READINESS INCOMPLET: verified_name absent")
+          print("meta_sender_valid", True)
+          PY
+
+      - name: Validate next published Sunday contacts without sending
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_API_KEY: ${{ secrets.SUPABASE_API_KEY }}
+          SUPABASE_STATE_KEY: ${{ secrets.SUPABASE_STATE_KEY }}
+          WHATSAPP_GRAPH_API_VERSION: "v25.0"
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_TEMPLATE_WEDNESDAY: "rappel_liturgie_mercredi"
+          WHATSAPP_TEMPLATE_FRIDAY: "rappel_liturgie_vendredi"
+          WHATSAPP_TEMPLATE_LANGUAGE: "fr"
+          WHATSAPP_AUTOMATION_ENABLED: "false"
+          WHATSAPP_DRY_RUN: "true"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          strip_outer_quotes() {
+            local value="$1"
+            value="${value#\"}"
+            value="${value%\"}"
+            value="${value#\'}"
+            value="${value%\'}"
+            printf '%s' "$value"
+          }
+
+          raw="$(strip_outer_quotes "${SUPABASE_URL%/}")"
+          export SUPABASE_API_KEY="$(strip_outer_quotes "$SUPABASE_API_KEY")"
+          export SUPABASE_STATE_KEY="$(strip_outer_quotes "$SUPABASE_STATE_KEY")"
+          export WHATSAPP_PHONE_NUMBER_ID="$(strip_outer_quotes "$WHATSAPP_PHONE_NUMBER_ID")"
+          export WHATSAPP_ACCESS_TOKEN="$(strip_outer_quotes "$WHATSAPP_ACCESS_TOKEN")"
+
+          case "$raw" in
+            http://*|https://*) export SUPABASE_URL="$raw" ;;
+            *.supabase.co) export SUPABASE_URL="https://$raw" ;;
+            *.*) export SUPABASE_URL="https://$raw" ;;
+            *) export SUPABASE_URL="https://$raw.supabase.co" ;;
+          esac
+
+          python scripts/whatsapp_automation.py --kind mercredi --readiness-only --require-complete
+
+      - name: Validate approved Meta templates without sending
+        env:
+          WHATSAPP_WABA_ID: ${{ secrets.WHATSAPP_WABA_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          waba_id = os.environ.get("WHATSAPP_WABA_ID", "").strip().strip('"').strip("'")
+          token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip().strip('"').strip("'")
+          if not waba_id:
+              raise SystemExit("READINESS INCOMPLET: secret WHATSAPP_WABA_ID absent")
+          if not token:
+              raise SystemExit("READINESS INCOMPLET: jeton Meta absent")
+
+          response = requests.get(
+              f"https://graph.facebook.com/v25.0/{waba_id}/message_templates",
+              params={"fields": "name,status,language", "limit": 100},
+              headers={"Authorization": f"Bearer {token}"},
+              timeout=25,
+          )
+          print("meta_templates_http_status", response.status_code)
+          if not response.ok:
+              raise SystemExit(f"READINESS INCOMPLET: templates Meta HTTP {response.status_code}")
+
+          rows = response.json().get("data", [])
+          wanted = {
+              "rappel_liturgie_mercredi": "fr",
+              "rappel_liturgie_vendredi": "fr",
+          }
+          found = {
+              str(item.get("name")): {
+                  "status": str(item.get("status", "")).upper(),
+                  "language": str(item.get("language", "")),
+              }
+              for item in rows
+              if isinstance(item, dict) and str(item.get("name")) in wanted
+          }
+
+          errors = []
+          for name, expected_language in wanted.items():
+              item = found.get(name)
+              if not item:
+                  errors.append(f"{name}: absent")
+                  continue
+              if item["status"] != "APPROVED":
+                  errors.append(f"{name}: statut={item['status'] or 'UNKNOWN'}")
+              language = item["language"]
+              if language != expected_language and not language.startswith(expected_language + "_"):
+                  errors.append(f"{name}: langue={language or 'UNKNOWN'}")
+
+          if errors:
+              for error in errors:
+                  print("[warning]", error)
+              raise SystemExit("READINESS INCOMPLET: templates Meta non validés")
+
+          print("meta_templates_approved", True)
+          PY
