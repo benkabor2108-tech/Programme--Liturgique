@@ -19,8 +19,33 @@ text = replace_once(
     "from datetime import date, timedelta\n",
     "import timedelta",
 )
-marker = '''def service_day_label(day: date) -> str:\n'''
-insert = '''def liturgical_reference_day(day: date) -> date:\n    \"\"\"Date liturgique dont les lectures doivent être utilisées pour ce service.\n\n    Le samedi soir est une messe anticipée du dimanche : il reprend donc\n    exactement les références bibliques du dimanche qui suit.\n    \"\"\"\n    if day.weekday() == 5:\n        return day + timedelta(days=1)\n    if day.weekday() == 6:\n        return day\n    raise ValueError(\"La date n'est ni un samedi ni un dimanche.\")\n\n\ndef liturgical_reference_days(days: list[date]) -> list[date]:\n    \"\"\"Retourne les dimanches de référence uniques, dans l'ordre des services.\"\"\"\n    result: list[date] = []\n    seen: set[date] = set()\n    for day in days:\n        reference_day = liturgical_reference_day(day)\n        if reference_day not in seen:\n            result.append(reference_day)\n            seen.add(reference_day)\n    return result\n\n\n'''
+marker = "def service_day_label(day: date) -> str:\n"
+insert = '''def liturgical_reference_day(day: date) -> date:
+    """Date liturgique dont les lectures doivent être utilisées pour ce service.
+
+    Le samedi soir est une messe anticipée du dimanche : il reprend donc
+    exactement les références bibliques du dimanche qui suit.
+    """
+    if day.weekday() == 5:
+        return day + timedelta(days=1)
+    if day.weekday() == 6:
+        return day
+    raise ValueError("La date n'est ni un samedi ni un dimanche.")
+
+
+def liturgical_reference_days(days: list[date]) -> list[date]:
+    """Retourne les dimanches de référence uniques, dans l'ordre des services."""
+    result: list[date] = []
+    seen: set[date] = set()
+    for day in days:
+        reference_day = liturgical_reference_day(day)
+        if reference_day not in seen:
+            result.append(reference_day)
+            seen.add(reference_day)
+    return result
+
+
+'''
 text = replace_once(text, marker, insert + marker, "helpers références anticipées")
 path.write_text(text, encoding="utf-8")
 
@@ -46,7 +71,6 @@ text = replace_once(
     "version v3.10.14",
 )
 
-# Le programme du samedi garde sa propre date/service, mais mémorise le dimanche de référence.
 text = replace_once(
     text,
     "        '            \"date\": sunday.isoformat(),\\n'\n"
@@ -59,9 +83,83 @@ text = replace_once(
     "métadonnée dimanche de référence",
 )
 
-# Les appels AELF du samedi sont redirigés vers le dimanche suivant, y compris hors mois.
-anchor = '''    source = _replace_once(\n        source,\n        '        month_sundays = sundays(year, month)\\n',\n        '        month_sundays = weekend_service_days(year, month)\\n',\n        \"sélection des célébrations du week-end\",\n    )\n'''
-new_block = anchor + '''    source = _replace_once(\n        source,\n        '''def fetch_month_aelf_refs(dates, zone):\n    refs = {}\n    errors = {}\n    for day in dates:\n        try:\n            refs[day.isoformat()] = fetch_aelf_refs(day.isoformat(), zone)\n        except Exception as exc:\n            errors[day.isoformat()] = str(exc)\n    return refs, errors\n''',\n        '''def fetch_month_aelf_refs(dates, zone):\n    refs = {}\n    errors = {}\n    for day in dates:\n        reference_day = liturgical_reference_day(day)\n        try:\n            item = dict(fetch_aelf_refs(reference_day.isoformat(), zone))\n            item[\"reference_date\"] = reference_day.isoformat()\n            if day.weekday() == 5:\n                item[\"source\"] = f\"{item.get('source', 'AELF')} · messe anticipée du dimanche\"\n            refs[day.isoformat()] = item\n        except Exception as exc:\n            errors[day.isoformat()] = str(exc)\n    return refs, errors\n''',\n        \"AELF samedi = dimanche suivant\",\n    )\n    source = _replace_once(\n        source,\n        '''def parse_refs(text, dates):\n    refs = {d.isoformat(): {\"r1\": \"\", \"r2\": \"\", \"ev\": \"\"} for d in dates}\n    for raw in text.splitlines():\n        raw = raw.strip()\n        if not raw:\n            continue\n        parts = [p.strip() for p in raw.split(\"|\")]\n        if len(parts) >= 4 and parts[0] in refs:\n            refs[parts[0]] = {\"r1\": parts[1], \"r2\": parts[2], \"ev\": parts[3], \"source\": \"Saisie manuelle\"}\n    return refs\n''',\n        '''def parse_refs(text, dates):\n    dates = list(dates)\n    raw_refs = {}\n    for raw in text.splitlines():\n        raw = raw.strip()\n        if not raw:\n            continue\n        parts = [p.strip() for p in raw.split(\"|\")]\n        if len(parts) >= 4:\n            raw_refs[parts[0]] = {\"r1\": parts[1], \"r2\": parts[2], \"ev\": parts[3], \"source\": \"Saisie manuelle\"}\n\n    refs = {}\n    for day in dates:\n        reference_day = liturgical_reference_day(day)\n        item = raw_refs.get(reference_day.isoformat())\n        # Compatibilité avec une ancienne saisie où le samedi avait sa propre ligne.\n        if item is None:\n            item = raw_refs.get(day.isoformat())\n        item = dict(item or {\"r1\": \"\", \"r2\": \"\", \"ev\": \"\", \"source\": \"Saisie manuelle\"})\n        item[\"reference_date\"] = reference_day.isoformat()\n        if day.weekday() == 5:\n            item[\"source\"] = \"Saisie manuelle · messe anticipée du dimanche\"\n        refs[day.isoformat()] = item\n    return refs\n''',\n        \"saisie manuelle samedi = dimanche suivant\",\n    )\n'''
+anchor = """    source = _replace_once(
+        source,
+        '        month_sundays = sundays(year, month)\\n',
+        '        month_sundays = weekend_service_days(year, month)\\n',
+        "sélection des célébrations du week-end",
+    )
+"""
+new_block = anchor + """    source = _replace_once(
+        source,
+        '''def fetch_month_aelf_refs(dates, zone):
+    refs = {}
+    errors = {}
+    for day in dates:
+        try:
+            refs[day.isoformat()] = fetch_aelf_refs(day.isoformat(), zone)
+        except Exception as exc:
+            errors[day.isoformat()] = str(exc)
+    return refs, errors
+''',
+        '''def fetch_month_aelf_refs(dates, zone):
+    refs = {}
+    errors = {}
+    for day in dates:
+        reference_day = liturgical_reference_day(day)
+        try:
+            item = dict(fetch_aelf_refs(reference_day.isoformat(), zone))
+            item["reference_date"] = reference_day.isoformat()
+            if day.weekday() == 5:
+                item["source"] = f"{item.get('source', 'AELF')} · messe anticipée du dimanche"
+            refs[day.isoformat()] = item
+        except Exception as exc:
+            errors[day.isoformat()] = str(exc)
+    return refs, errors
+''',
+        "AELF samedi = dimanche suivant",
+    )
+    source = _replace_once(
+        source,
+        '''def parse_refs(text, dates):
+    refs = {d.isoformat(): {"r1": "", "r2": "", "ev": ""} for d in dates}
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) >= 4 and parts[0] in refs:
+            refs[parts[0]] = {"r1": parts[1], "r2": parts[2], "ev": parts[3], "source": "Saisie manuelle"}
+    return refs
+''',
+        '''def parse_refs(text, dates):
+    dates = list(dates)
+    raw_refs = {}
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) >= 4:
+            raw_refs[parts[0]] = {"r1": parts[1], "r2": parts[2], "ev": parts[3], "source": "Saisie manuelle"}
+
+    refs = {}
+    for day in dates:
+        reference_day = liturgical_reference_day(day)
+        item = raw_refs.get(reference_day.isoformat())
+        # Compatibilité avec une ancienne saisie où le samedi avait sa propre ligne.
+        if item is None:
+            item = raw_refs.get(day.isoformat())
+        item = dict(item or {"r1": "", "r2": "", "ev": "", "source": "Saisie manuelle"})
+        item["reference_date"] = reference_day.isoformat()
+        if day.weekday() == 5:
+            item["source"] = "Saisie manuelle · messe anticipée du dimanche"
+        refs[day.isoformat()] = item
+    return refs
+''',
+        "saisie manuelle samedi = dimanche suivant",
+    )
+"""
 text = replace_once(text, anchor, new_block, "insertion règles références anticipées")
 
 text = replace_once(
@@ -78,9 +176,23 @@ text = replace_once(
     "colonne dimanche de référence",
 )
 
-# En saisie manuelle, on demande une ligne par dimanche de référence et non par service.
-manual_anchor = '''    source = _replace_once(\n        source,\n        '    st.caption(\"📱 Vue téléphone : ouvrez un dimanche pour voir toutes les références et fonctions sans défilement horizontal.\")\\n',\n'''
-manual_insert = '''    source = _replace_once(\n        source,\n        '            example = \"\\n\".join(f\"{d.isoformat()} |  |  | \" for d in month_sundays)\\n',\n        '            reference_days = liturgical_reference_days(month_sundays)\\n            example = \"\\n\".join(f\"{d.isoformat()} |  |  | \" for d in reference_days)\\n',\n        \"saisie manuelle par dimanche de référence\",\n    )\n    source = _replace_once(\n        source,\n        '                \"AAAA-MM-JJ | 1re lecture | 2e lecture | Évangile\",\\n',\n        '                \"Dimanche de référence (AAAA-MM-JJ) | 1re lecture | 2e lecture | Évangile\",\\n',\n        \"libellé saisie manuelle dimanche\",\n    )\n'''
+manual_anchor = """    source = _replace_once(
+        source,
+        '    st.caption("📱 Vue téléphone : ouvrez un dimanche pour voir toutes les références et fonctions sans défilement horizontal.")\\n',
+"""
+manual_insert = """    source = _replace_once(
+        source,
+        '            example = "\\n".join(f"{d.isoformat()} |  |  | " for d in month_sundays)\\n',
+        '            reference_days = liturgical_reference_days(month_sundays)\\n            example = "\\n".join(f"{d.isoformat()} |  |  | " for d in reference_days)\\n',
+        "saisie manuelle par dimanche de référence",
+    )
+    source = _replace_once(
+        source,
+        '                "AAAA-MM-JJ | 1re lecture | 2e lecture | Évangile",\\n',
+        '                "Dimanche de référence (AAAA-MM-JJ) | 1re lecture | 2e lecture | Évangile",\\n',
+        "libellé saisie manuelle dimanche",
+    )
+"""
 text = replace_once(text, manual_anchor, manual_insert + manual_anchor, "UI saisie manuelle")
 
 text = replace_once(
@@ -106,8 +218,30 @@ text = replace_once(
     ")\n",
     "imports tests références",
 )
-insert_before = '''    def test_wrapper_targets_weekend_generation_without_rewriting_core(self):\n'''
-new_tests = '''    def test_saturday_uses_following_sunday_references(self):\n        self.assertEqual(\n            liturgical_reference_day(date(2026, 10, 3)),\n            date(2026, 10, 4),\n        )\n        self.assertEqual(\n            liturgical_reference_day(date(2026, 10, 4)),\n            date(2026, 10, 4),\n        )\n        # Cas important : samedi en fin de mois, dimanche dans le mois suivant.\n        self.assertEqual(\n            liturgical_reference_day(date(2026, 10, 31)),\n            date(2026, 11, 1),\n        )\n\n    def test_reference_days_are_unique_sundays_including_next_month(self):\n        refs = liturgical_reference_days(weekend_service_days(2026, 10))\n        self.assertEqual(\n            [day.isoformat() for day in refs],\n            [\"2026-10-04\", \"2026-10-11\", \"2026-10-18\", \"2026-10-25\", \"2026-11-01\"],\n        )\n\n'''
+insert_before = "    def test_wrapper_targets_weekend_generation_without_rewriting_core(self):\n"
+new_tests = '''    def test_saturday_uses_following_sunday_references(self):
+        self.assertEqual(
+            liturgical_reference_day(date(2026, 10, 3)),
+            date(2026, 10, 4),
+        )
+        self.assertEqual(
+            liturgical_reference_day(date(2026, 10, 4)),
+            date(2026, 10, 4),
+        )
+        # Cas important : samedi en fin de mois, dimanche dans le mois suivant.
+        self.assertEqual(
+            liturgical_reference_day(date(2026, 10, 31)),
+            date(2026, 11, 1),
+        )
+
+    def test_reference_days_are_unique_sundays_including_next_month(self):
+        refs = liturgical_reference_days(weekend_service_days(2026, 10))
+        self.assertEqual(
+            [day.isoformat() for day in refs],
+            ["2026-10-04", "2026-10-11", "2026-10-18", "2026-10-25", "2026-11-01"],
+        )
+
+'''
 text = replace_once(text, insert_before, new_tests + insert_before, "tests règle messe anticipée")
 text = replace_once(
     text,
