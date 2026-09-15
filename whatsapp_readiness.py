@@ -1,8 +1,9 @@
 """Calcul pur de la readiness WhatsApp des programmes liturgiques publiés.
 
 Ce module ne lit ni n'écrit Supabase et ne contacte pas Meta. Il évalue
-uniquement les dimanches futurs actifs et la configuration locale des contacts
-(numéro, consentement, activation) afin d'alimenter l'interface et les tests.
+les célébrations futures actives du week-end (samedi + dimanche) et la
+configuration locale des contacts (numéro, consentement, activation) afin
+d'alimenter l'interface et les tests.
 """
 from __future__ import annotations
 
@@ -62,8 +63,12 @@ def scheduled_assignments(row: dict) -> list[tuple[str, str]]:
     return [(code, " / ".join(roles_by_code[code])) for code in order]
 
 
+def _service_label(day: date) -> str:
+    return "Samedi" if day.weekday() == 5 else "Dimanche"
+
+
 def future_readiness_rows(state: dict | None, reference_day: date | None = None) -> list[dict]:
-    """Construit la readiness des affectations des dimanches futurs encore actifs."""
+    """Construit la readiness des affectations futures actives du week-end."""
     state = state if isinstance(state, dict) else {}
     reference_day = reference_day or date.today()
     names = state.get("names", {}) if isinstance(state.get("names"), dict) else {}
@@ -77,18 +82,21 @@ def future_readiness_rows(state: dict | None, reference_day: date | None = None)
             day = date.fromisoformat(str(row.get("date", "")))
         except (TypeError, ValueError):
             continue
-        if day.weekday() != 6:
+        if day.weekday() not in (5, 6):
             continue
         if day >= reference_day:
             dated_rows.append((day, row))
 
     output: list[dict] = []
     for day, row in sorted(dated_rows, key=lambda item: item[0]):
+        service_day = "samedi" if day.weekday() == 5 else "dimanche"
         for code, role in scheduled_assignments(row):
             ready, reasons = contact_readiness(contacts.get(code, {}))
             output.append({
                 "date": day.isoformat(),
                 "date_label": day.strftime("%d/%m/%Y"),
+                "service_day": service_day,
+                "celebration_label": f"{_service_label(day)} {day.strftime('%d/%m/%Y')}",
                 "code": code,
                 "name": str(names.get(code, code)),
                 "role": role,
@@ -109,11 +117,23 @@ def readiness_summary(rows: list[dict] | None) -> dict:
         code = str(row.get("code", "")).strip()
         if code:
             blocker_map[code] = str(row.get("name", code))
-    sundays = sorted({str(row.get("date", "")) for row in rows if row.get("date")})
+    celebrations = sorted({str(row.get("date", "")) for row in rows if row.get("date")})
+    sundays = sorted({
+        str(row.get("date", ""))
+        for row in rows
+        if row.get("date") and str(row.get("service_day", "")).lower() == "dimanche"
+    })
+    saturdays = sorted({
+        str(row.get("date", ""))
+        for row in rows
+        if row.get("date") and str(row.get("service_day", "")).lower() == "samedi"
+    })
     return {
         "assignments": len(rows),
         "ready": len(ready),
         "blocked": len(blocked),
+        "celebrations": len(celebrations),
+        "saturdays": len(saturdays),
         "sundays": len(sundays),
         "blocker_codes": sorted(blocker_map),
         "blocker_names": [blocker_map[code] for code in sorted(blocker_map)],
@@ -124,7 +144,7 @@ def display_rows(rows: list[dict] | None) -> list[dict]:
     """Projection sans numéro, adaptée à l'affichage Streamlit."""
     return [
         {
-            "Dimanche": row.get("date_label", ""),
+            "Célébration": row.get("celebration_label") or row.get("date_label", ""),
             "Membre": row.get("name", row.get("code", "")),
             "Service": row.get("role", ""),
             "État WhatsApp": row.get("status", ""),
