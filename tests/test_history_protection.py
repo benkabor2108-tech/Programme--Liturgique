@@ -1,6 +1,8 @@
+import ast
 import unittest
 from copy import deepcopy
 from datetime import date
+from pathlib import Path
 
 from history_protection import (
     active_history_rows,
@@ -45,6 +47,24 @@ class HistoryProtectionTests(unittest.TestCase):
             "attendance": {},
             "auth_security": {},
         }
+
+    @staticmethod
+    def transformed_core_source():
+        wrapper_path = Path("liturgie_app.py")
+        tree = ast.parse(wrapper_path.read_text(encoding="utf-8"), filename=str(wrapper_path))
+        selected = [
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name in {"_replace_once", "_runtime_core_source"}
+        ]
+        module = ast.Module(body=selected, type_ignores=[])
+        namespace = {
+            "CORE_PATH": Path("liturgie_app_core.py"),
+            "APP_VERSION_OVERRIDE": "2026.09.15-persistant-supabase-v3.10.5-history-protected",
+        }
+        exec(compile(module, str(wrapper_path), "exec"), namespace, namespace)
+        return namespace["_runtime_core_source"]()
 
     def test_cancel_latest_month_keeps_all_history_rows(self):
         before = deepcopy(self.state)
@@ -121,6 +141,18 @@ class HistoryProtectionTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Aucun mois actif", message)
         self.assertEqual(result, state)
+
+    def test_runtime_core_transform_compiles_and_blocks_destructive_ui(self):
+        transformed = self.transformed_core_source()
+        compile(transformed, "liturgie_app_core.py", "exec")
+        self.assertIn(
+            'APP_VERSION = "2026.09.15-persistant-supabase-v3.10.5-history-protected"',
+            transformed,
+        )
+        self.assertIn("Annuler sans supprimer", transformed)
+        self.assertIn("Archives annulées", transformed)
+        self.assertNotIn("Réinitialiser pour un nouveau départ", transformed)
+        self.assertNotIn("Supprimez d'abord ce mois de l'historique", transformed)
 
 
 if __name__ == "__main__":
