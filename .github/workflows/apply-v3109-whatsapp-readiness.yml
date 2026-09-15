@@ -6,6 +6,7 @@ on:
       - feature/v3.10.9-whatsapp-readiness
     paths:
       - scripts/_patch_v3109.py
+      - scripts/_repair_patch_v3109.py
       - .github/workflows/apply-v3109-whatsapp-readiness.yml
 
 permissions:
@@ -24,6 +25,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+
+      - name: Repair patcher
+        run: python scripts/_repair_patch_v3109.py
 
       - name: Apply guarded source patch
         run: python scripts/_patch_v3109.py
