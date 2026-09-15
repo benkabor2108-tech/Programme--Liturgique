@@ -20,7 +20,7 @@ from state_store import (
     StateConflictError, StateNotFoundError, load_state_record, save_state_if_revision,
 )
 
-APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.7-supabase-hardened"
+APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.8-role-guards"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
