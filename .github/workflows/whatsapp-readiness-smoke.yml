@@ -52,6 +52,55 @@ jobs:
           print("meta_verified_name_present", bool(isinstance(data, dict) and data.get("verified_name")))
           PY
 
+      - name: Discover WABA and inspect template approvals
+        env:
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "").strip().strip('"').strip("'")
+          token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip().strip('"').strip("'")
+          headers = {"Authorization": f"Bearer {token}"}
+          probe = requests.get(
+              f"https://graph.facebook.com/v25.0/{phone_id}",
+              params={"fields": "whatsapp_business_account"},
+              headers=headers,
+              timeout=25,
+          )
+          print("waba_discovery_status", probe.status_code)
+          if not probe.ok:
+              print("waba_discovery_supported", False)
+              raise SystemExit(0)
+          data = probe.json()
+          waba = data.get("whatsapp_business_account") if isinstance(data, dict) else None
+          waba_id = waba.get("id") if isinstance(waba, dict) else ""
+          print("waba_discovery_supported", bool(waba_id))
+          if not waba_id:
+              raise SystemExit(0)
+          response = requests.get(
+              f"https://graph.facebook.com/v25.0/{waba_id}/message_templates",
+              params={"fields": "name,status,language", "limit": 100},
+              headers=headers,
+              timeout=25,
+          )
+          print("template_list_status", response.status_code)
+          if not response.ok:
+              raise SystemExit(0)
+          rows = response.json().get("data", [])
+          wanted = {"rappel_liturgie_mercredi", "rappel_liturgie_vendredi"}
+          found = {
+              str(item.get("name")): (str(item.get("status")), str(item.get("language")))
+              for item in rows if str(item.get("name")) in wanted
+          }
+          for name in sorted(wanted):
+              status, language = found.get(name, ("MISSING", ""))
+              print(f"template_{name}_status", status)
+              print(f"template_{name}_language", language or "UNKNOWN")
+          PY
+
       - name: Dry-run all October reminder dates
         env:
           PYTHONPATH: ${{ github.workspace }}
