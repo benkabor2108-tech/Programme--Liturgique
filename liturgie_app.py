@@ -37,7 +37,7 @@ from weekend_generation import (
     weekend_service_days,
 )
 
-APP_VERSION_OVERRIDE = "2026.09.15-persistant-supabase-v3.10.17-whatsapp-reminder-preview"
+APP_VERSION_OVERRIDE = "2026.09.16-persistant-supabase-v3.10.18-saturday-combined-ministry"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -166,7 +166,7 @@ def _runtime_core_source():
     source = _replace_once(
         source,
         '            st.info("📖 Les références des dimanches seront récupérées automatiquement depuis l\'API AELF au moment de la génération. Aucun copier-coller n\'est nécessaire.")\n',
-        '            st.info("📖 Le samedi soir est traité comme messe anticipée : mêmes références bibliques que le dimanche qui suit, y compris si ce dimanche est dans le mois suivant. Les 3 lecteurs du samedi (1re lecture, 2e lecture, Monition/P.U.) sont tous mooréphones.")\n',
+        '            st.info("📖 Le samedi soir est traité comme messe anticipée : mêmes références bibliques que le dimanche qui suit, y compris si ce dimanche est dans le mois suivant. Les 3 intervenants du samedi sont tous mooréphones : 1re lecture, 2e lecture, puis une même personne pour Monition/P.U. + Annonces.")\n',
         "texte AELF week-end",
     )
     source = _replace_once(
@@ -259,8 +259,8 @@ def _runtime_core_source():
 ''',
         '''        is_saturday = sunday.weekday() == 5
         if is_saturday:
-            # Messe anticipée : trois lecteurs distincts, tous mooréphones.
-            # Les annonces restent une fonction indépendante, comme le dimanche.
+            # Messe anticipée : trois intervenants distincts, tous mooréphones.
+            # Le 3e assure Monition + P.U. + Annonces.
             mo_read_pool = [
                 c for c in programmable_codes(state, "MO", sunday)
                 if state["people"][c]["next_role"] in (None, "LECTURE")
@@ -286,17 +286,14 @@ def _runtime_core_source():
             rng.shuffle(mo_mon_pool)
             m_mon = min(mo_mon_pool, key=lambda c: monition_rank(state, c, sunday))
             f_mon = None
-            excluded.add(m_mon)
-
-            # Les annonces restent indépendantes et sans cumul avec les trois lecteurs.
-            f_ann = choose_announcement(state, "FR", sunday, excluded, rng)
-            m_ann = choose_announcement(state, "MO", sunday, excluded, rng)
+            # Messe anticipée : la même personne assure Monition + P.U. + Annonces.
+            f_ann = None
+            m_ann = m_mon
 
             assign(state, r1_code, "LECTURE", sunday)
             assign(state, r2_code, "LECTURE", sunday)
             assign(state, m_mon, "MONITION", sunday)
-            assign(state, f_ann, "ANNONCE", sunday)
-            assign(state, m_ann, "ANNONCE", sunday)
+            assign(state, m_mon, "ANNONCE", sunday)
             # Ne pas modifier next_first_language : l'alternance FR/MO reste pilotée par les dimanches.
         else:
             f_read, m_read = choose_readers(state, sunday, rng)
@@ -332,6 +329,12 @@ def _runtime_core_source():
     )
     source = _replace_once(
         source,
+        '            "Annonces": f"FR : {names[f_ann]}\\nMO : {names[m_ann]}",\n',
+        '            "Annonces": (f"MO : {names[m_mon]}" if is_saturday else f"FR : {names[f_ann]}\\nMO : {names[m_ann]}"),\n',
+        "affichage annonces samedi même personne",
+    )
+    source = _replace_once(
+        source,
         '''            "codes": {
                 "r1": r1_code, "r2": r2_code,
                 "f_mon": f_mon, "m_mon": m_mon,
@@ -342,7 +345,7 @@ def _runtime_core_source():
                 {
                     "r1": r1_code, "r2": r2_code,
                     "m_mon": m_mon,
-                    "f_ann": f_ann, "m_ann": m_ann,
+                    "m_ann": m_mon,
                 }
                 if is_saturday else
                 {

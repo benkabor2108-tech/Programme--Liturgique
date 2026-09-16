@@ -183,15 +183,16 @@ def contact_readiness(contact: dict) -> tuple[str, bool, list[str]]:
 def role_for_code(row: dict, code: str) -> str:
     codes = row.get("codes", {}) if isinstance(row.get("codes"), dict) else {}
     lang = "Français" if str(code).startswith("F") else "Mooré"
+    roles = []
     if codes.get("r1") == code:
-        return f"1re lecture — {lang}"
+        roles.append(f"1re lecture — {lang}")
     if codes.get("r2") == code:
-        return f"2e lecture — {lang}"
+        roles.append(f"2e lecture — {lang}")
     if codes.get("f_mon") == code or codes.get("m_mon") == code:
-        return f"Monition + P.U. — {lang}"
+        roles.append(f"Monition + P.U. — {lang}")
     if codes.get("f_ann") == code or codes.get("m_ann") == code:
-        return f"Annonces — {lang}"
-    return ""
+        roles.append(f"Annonces — {lang}")
+    return " + ".join(roles)
 
 
 def scheduled_codes(row: dict) -> list[str]:

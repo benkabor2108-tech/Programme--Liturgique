@@ -76,7 +76,12 @@ class WeekendGenerationTests(unittest.TestCase):
         self.assertIn("troisième lecteur mooréphone", wrapper)
         self.assertIn("codes samedi sans lecteur français", wrapper)
         self.assertIn("sunday.weekday() == 6", wrapper)
-        self.assertIn("Les 3 lecteurs du samedi", wrapper)
+        self.assertIn("Les 3 intervenants du samedi", wrapper)
+        self.assertIn("la même personne assure Monition + P.U. + Annonces", wrapper)
+        self.assertIn("f_ann = None", wrapper)
+        self.assertIn("m_ann = m_mon", wrapper)
+        self.assertIn('"m_ann": m_mon', wrapper)
+        self.assertIn("affichage annonces samedi même personne", wrapper)
         # Le cœur historique reste inchangé; la correction passe par la couche protégée.
         self.assertIn("def sundays(year, month):", core)
         self.assertIn("d.weekday() == 6", core)

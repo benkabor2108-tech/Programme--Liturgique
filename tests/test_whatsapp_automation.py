@@ -5,6 +5,12 @@ from scripts import whatsapp_automation as wa
 
 
 class WhatsAppAutomationTests(unittest.TestCase):
+    def test_role_for_code_combines_monition_and_announcements(self):
+        row = {"codes": {"m_mon": "M3", "m_ann": "M3"}}
+        role = wa.role_for_code(row, "M3")
+        self.assertIn("Monition + P.U. — Mooré", role)
+        self.assertIn("Annonces — Mooré", role)
+
     def test_principal_authorization_defaults_to_false(self):
         self.assertFalse(wa.automation_authorized({}))
         self.assertFalse(wa.automation_authorized({"whatsapp_automation_authorized": False}))

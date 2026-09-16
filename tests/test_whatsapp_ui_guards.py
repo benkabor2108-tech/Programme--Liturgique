@@ -12,7 +12,7 @@ PREVIEW = (ROOT / "whatsapp_reminder_preview.py").read_text(encoding="utf-8")
 
 class WhatsAppUiGuardTests(unittest.TestCase):
     def test_checkpoint_version_is_reminder_preview(self):
-        self.assertIn("v3.10.17-whatsapp-reminder-preview", WRAPPER)
+        self.assertIn("v3.10.18-saturday-combined-ministry", WRAPPER)
 
     def test_streamlit_next_sunday_ignores_cancelled_history(self):
         marker = "def next_published_sunday(state, reference_day=None):"
