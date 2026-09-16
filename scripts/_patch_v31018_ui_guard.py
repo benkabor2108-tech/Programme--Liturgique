@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot validation trigger for v3.10.18.
 path = Path(__file__).resolve().parents[1] / "tests" / "test_whatsapp_ui_guards.py"
 text = path.read_text(encoding="utf-8")
 old = '        self.assertIn("v3.10.17-whatsapp-reminder-preview", WRAPPER)\n'
