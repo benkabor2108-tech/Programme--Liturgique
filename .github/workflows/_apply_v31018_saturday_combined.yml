@@ -1,0 +1,79 @@
+name: Apply v3.10.18 Saturday combined ministry
+
+on:
+  push:
+    branches:
+      - feature/v3.10.18-saturday-combined-ministry
+    paths:
+      - scripts/_patch_v31018_saturday_combined_ministry.py
+      - scripts/_patch_v31018_ui_guard.py
+      - .github/workflows/_apply_v31018_saturday_combined.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/v3.10.18-saturday-combined-ministry
+          fetch-depth: 0
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Validate patcher syntax
+        run: |
+          python -m py_compile scripts/_patch_v31018_saturday_combined_ministry.py
+          python -m py_compile scripts/_patch_v31018_ui_guard.py
+
+      - name: Apply guarded patches
+        run: |
+          python scripts/_patch_v31018_saturday_combined_ministry.py
+          python scripts/_patch_v31018_ui_guard.py
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile changed surfaces
+        run: |
+          python -m py_compile liturgie_app.py
+          python -m py_compile scripts/whatsapp_automation.py
+          python -m py_compile tests/test_weekend_generation.py
+          python -m py_compile tests/test_whatsapp_automation.py
+          python -m py_compile tests/test_whatsapp_ui_guards.py
+
+      - name: Run regression tests
+        run: |
+          python -m unittest tests/test_weekend_generation.py -v
+          python -m unittest tests/test_whatsapp_automation.py -v
+          python -m unittest tests/test_whatsapp_contact_readiness.py -v
+          python -m unittest tests/test_whatsapp_global_readiness.py -v
+          python -m unittest tests/test_whatsapp_reminder_preview.py -v
+          python -m unittest tests/test_whatsapp_ui_guards.py -v
+          python -m unittest tests/test_history_protection.py -v
+          python -m unittest tests/test_state_store.py -v
+          python -m unittest tests/test_role_guards.py -v
+
+      - name: Verify clean patch
+        run: git diff --check
+
+      - name: Commit validated product changes
+        run: |
+          git config user.name "benkabor2108-tech"
+          git config user.email "benkabor2108@gmail.com"
+          git add liturgie_app.py scripts/whatsapp_automation.py tests/test_weekend_generation.py tests/test_whatsapp_automation.py tests/test_whatsapp_ui_guards.py
+          if git diff --cached --quiet; then
+            echo "No product changes to commit."
+          else
+            git commit -m "fix: combine Saturday monition PU and announcements"
+            git push origin HEAD:feature/v3.10.18-saturday-combined-ministry
+          fi
