@@ -59,12 +59,12 @@ text = replace_once(
 text = replace_once(
     text,
     '        "affichage monition samedi mooré",\n    )\n',
-    '''        "affichage monition samedi mooré",
+    r'''        "affichage monition samedi mooré",
     )
     source = _replace_once(
         source,
-        '            "Annonces": f"FR : {names[f_ann]}\\nMO : {names[m_ann]}",\\n',
-        '            "Annonces": (f"MO : {names[m_mon]}" if is_saturday else f"FR : {names[f_ann]}\\nMO : {names[m_ann]}"),\\n',
+        '            "Annonces": f"FR : {names[f_ann]}\\nMO : {names[m_ann]}",\n',
+        '            "Annonces": (f"MO : {names[m_mon]}" if is_saturday else f"FR : {names[f_ann]}\\nMO : {names[m_ann]}"),\n',
         "affichage annonces samedi même personne",
     )
 ''',
@@ -141,6 +141,7 @@ replacement = '''        self.assertIn("Les 3 intervenants du samedi", wrapper)
         self.assertIn("f_ann = None", wrapper)
         self.assertIn("m_ann = m_mon", wrapper)
         self.assertIn('"m_ann": m_mon', wrapper)
+        self.assertIn("affichage annonces samedi même personne", wrapper)
 '''
 text = replace_once(text, needle, replacement, "tests ministère combiné samedi")
 path.write_text(text, encoding="utf-8")
@@ -153,7 +154,7 @@ insert_marker = 'class WhatsAppAutomationTests(unittest.TestCase):\n'
 addition = '''class WhatsAppAutomationTests(unittest.TestCase):
     def test_role_for_code_combines_monition_and_announcements(self):
         row = {"codes": {"m_mon": "M3", "m_ann": "M3"}}
-        role = automation.role_for_code(row, "M3")
+        role = wa.role_for_code(row, "M3")
         self.assertIn("Monition + P.U. — Mooré", role)
         self.assertIn("Annonces — Mooré", role)
 
