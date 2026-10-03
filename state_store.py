@@ -30,7 +30,6 @@ def _headers(api_key: str) -> dict:
     key = str(api_key or "").strip()
     return {
         "apikey": key,
-        "Authorization": f"Bearer {key}",
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
