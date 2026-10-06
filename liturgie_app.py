@@ -39,7 +39,7 @@ from weekend_generation import (
     weekend_service_days,
 )
 
-APP_VERSION_OVERRIDE = "2026.10.06-persistant-supabase-v3.10.19-attendance-monthly-pdf"
+APP_VERSION_OVERRIDE = "2026.10.06-persistant-supabase-v3.10.20-attendance-pdf-staff-only"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -820,31 +820,33 @@ def full_fresh_start(state):
     st.markdown("### 🗂️ Anciennes feuilles")
 ''',
         '''    st.divider()
-    st.markdown("### 🖨️ Extraire l'état mensuel des présences en PDF")
-    _attendance_months = available_attendance_months(state, today=_now.date())
-    _attendance_period = st.selectbox(
-        "Mois à extraire",
-        _attendance_months,
-        format_func=lambda ym: f"{MONTHS[ym[1] - 1]} {ym[0]}",
-        key="attendance_pdf_month",
-    )
-    _attendance_year, _attendance_month = _attendance_period
-    _attendance_is_current = (_attendance_year, _attendance_month) == (_now.year, _now.month)
-    st.caption(
-        "Le PDF reprend l'état réellement enregistré au moment de l'extraction. "
-        + ("Pour le mois en cours, il est indiqué comme provisoire." if _attendance_is_current
-           else "Pour un mois écoulé, il constitue l'état enregistré de ce mois.")
-    )
-    st.download_button(
-        "📄 Télécharger l'état des présences — PDF A4",
-        data=attendance_pdf_bytes(
-            state, _attendance_year, _attendance_month,
-            generated_at=_now.replace(tzinfo=None),
-        ),
-        file_name=f"presences_{_attendance_year}_{_attendance_month:02d}.pdf",
-        mime="application/pdf",
-        use_container_width=True,
-    )
+    if IS_ADMIN or IS_ADJOINT:
+        st.markdown("### 🖨️ Extraire l'état mensuel des présences en PDF")
+        _attendance_months = available_attendance_months(state, today=_now.date())
+        _attendance_period = st.selectbox(
+            "Mois à extraire",
+            _attendance_months,
+            format_func=lambda ym: f"{MONTHS[ym[1] - 1]} {ym[0]}",
+            key="attendance_pdf_month",
+        )
+        _attendance_year, _attendance_month = _attendance_period
+        _attendance_is_current = (_attendance_year, _attendance_month) == (_now.year, _now.month)
+        st.caption(
+            "Extraction réservée à l'administrateur principal et aux administrateurs adjoints. "
+            "Le PDF reprend l'état réellement enregistré au moment de l'extraction. "
+            + ("Pour le mois en cours, il est indiqué comme provisoire." if _attendance_is_current
+               else "Pour un mois écoulé, il constitue l'état enregistré de ce mois.")
+        )
+        st.download_button(
+            "📄 Télécharger l'état des présences — PDF A4",
+            data=attendance_pdf_bytes(
+                state, _attendance_year, _attendance_month,
+                generated_at=_now.replace(tzinfo=None),
+            ),
+            file_name=f"presences_{_attendance_year}_{_attendance_month:02d}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
 
     st.divider()
     st.markdown("### 🗂️ Anciennes feuilles")
