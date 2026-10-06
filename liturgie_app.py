@@ -39,7 +39,7 @@ from weekend_generation import (
     weekend_service_days,
 )
 
-APP_VERSION_OVERRIDE = "2026.10.06-persistant-supabase-v3.10.21-adjoint-program-generation"
+APP_VERSION_OVERRIDE = "2026.10.06-persistant-supabase-v3.10.22-adjoint-generation-fix"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -856,8 +856,16 @@ def full_fresh_start(state):
 
     source = _replace_once(
         source,
-        'with generate_tab:\n    if not IS_ADMIN:\n        st.subheader("✨ Générer")\n        st.info("La génération et la validation d\\'un nouveau programme sont réservées à l\\'administrateur principal.")\n',
-        'with generate_tab:\n    if not (IS_ADMIN or IS_ADJOINT):\n        st.subheader("✨ Générer")\n        st.info("La génération d\\'un nouveau programme est réservée aux administrateurs autorisés.")\n',
+        """with generate_tab:
+    if not IS_ADMIN:
+        st.subheader("✨ Générer")
+        st.info("La génération et la validation d'un nouveau programme sont réservées à l'administrateur principal.")
+""",
+        """with generate_tab:
+    if not (IS_ADMIN or IS_ADJOINT):
+        st.subheader("✨ Générer")
+        st.info("La génération d'un nouveau programme est réservée aux administrateurs autorisés.")
+""",
         "génération du programme accessible aux adjoints",
     )
 
