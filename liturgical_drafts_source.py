@@ -424,34 +424,29 @@ def build_draft(context, country=DEFAULT_COUNTRY):
     ]
     pu_intro = pu_intros[variant]
 
-    church_bridge = f"À la lumière de cette parole, {church_quote}, " if church_quote else ""
-    nation_bridge = f"Éclairés par cette parole, {nation_quote}, " if nation_quote else ""
-    suffering_bridge = f"Portés par cette parole, {suffering_quote}, " if suffering_quote else ""
-    assembly_bridge = f"Accueillant cette parole, {assembly_quote}, " if assembly_quote else ""
-
     intentions = [
         (
             "Pour l’Église répandue à travers le monde, pour le pape, les évêques, les prêtres, les diacres, "
             "les personnes consacrées, les catéchistes et tous les baptisés : "
-            f"{church_bridge}qu’elle demeure fidèle à l’invitation du Seigneur et ouvre largement les chemins "
-            "de l’Évangile à tous les hommes, sans exclusion. Prions le Seigneur."
+            "qu’elle annonce fidèlement l’Évangile, accueille chacun avec charité et demeure un signe vivant "
+            "de communion, d’espérance et de paix. Prions le Seigneur."
         ),
         (
             f"Pour les responsables des nations, particulièrement ceux de notre pays, le {country}, et pour tous "
-            "ceux qui exercent une charge au service du bien commun : "
-            f"{nation_bridge}que Dieu leur donne sagesse, droiture et courage pour promouvoir la paix, la justice, "
-            "la sécurité, la dignité de toute personne et une authentique fraternité. Prions le Seigneur."
+            "ceux qui exercent une charge au service du bien commun : que Dieu leur accorde sagesse, droiture "
+            "et courage pour promouvoir la paix, la justice, la sécurité, la dignité de toute personne "
+            "et une authentique fraternité. Prions le Seigneur."
         ),
         (
             "Pour les malades, les pauvres, les prisonniers, les personnes déplacées, les victimes de violence, "
             "les familles éprouvées, les personnes seules et tous ceux qui traversent l’angoisse ou le découragement : "
-            f"{suffering_bridge}qu’ils rencontrent des frères et des sœurs capables de leur manifester la proximité "
-            "du Christ et qu’ils retrouvent force, consolation et espérance. Prions le Seigneur."
+            "qu’ils trouvent soutien, consolation et espérance, et que notre solidarité leur manifeste une présence "
+            "fraternelle et attentive. Prions le Seigneur."
         ),
         (
             "Pour notre communauté rassemblée, pour nos familles et pour ceux qui n’ont pas pu se joindre à nous : "
-            f"{assembly_bridge}que cette Eucharistie nous rende disponibles à l’appel de Dieu, attentifs à sa Parole "
-            "et généreux dans le service, afin que notre vie devienne un témoignage crédible de l’Évangile. Prions le Seigneur."
+            "que cette Eucharistie fortifie notre foi, renouvelle notre charité et nous rende disponibles au service "
+            "de nos frères et sœurs. Prions le Seigneur."
         ),
     ]
 
@@ -471,7 +466,7 @@ def build_draft(context, country=DEFAULT_COUNTRY):
         "themes": themes,
         "central_theme": central_theme,
         "liturgical_season": season,
-        "generator_version": 4,
+        "generator_version": 5,
         "biblical_excerpts": {
             "monition": biblical_excerpt(monition_record, main_theme),
             "church": biblical_excerpt(church_record, main_theme),
