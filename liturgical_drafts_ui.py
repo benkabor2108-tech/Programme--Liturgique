@@ -165,10 +165,14 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
 
     existing = saved_drafts(state).get(draft_key)
     if isinstance(existing, dict):
-        st.info("💾 Un brouillon enregistré existe déjà pour cette célébration.")
+        if int(existing.get("generator_version", 0) or 0) < 4:
+            st.warning("🆕 Une nouvelle rédaction liturgique est disponible : utilisez le bouton ci-dessous pour actualiser l’ancien brouillon.")
+            existing = None
+        else:
+            st.info("💾 Un brouillon enregistré existe déjà pour cette célébration.")
 
     generate_clicked = st.button(
-        "✨ Préparer la proposition",
+        "✨ Générer / actualiser la proposition",
         type="primary",
         disabled=not availability["available"],
         use_container_width=True,
@@ -275,6 +279,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
                 "zone_label": zone_label,
                 "celebration": celebration,
                 "liturgical_season": season,
+                "generator_version": draft.get("generator_version", 4),
                 "refs": refs,
                 "source_url": context.get("source_url", ""),
                 "monition": monition,
