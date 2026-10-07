@@ -404,12 +404,11 @@ def build_draft(context, country=DEFAULT_COUNTRY):
     monition_parts = [openings[variant], themes_intro[variant]]
     if service_date == date(2026, 10, 11):
         monition_parts.append(
-            "Isaïe annonce le festin que le Seigneur prépare pour tous les peuples ; "
-            "saint Paul témoigne de la force reçue du Christ au cœur de toute situation ; "
-            "et, dans l’Évangile, Jésus compare le Royaume des Cieux à des noces auxquelles l’invitation est largement offerte."
+            "En ce jour, la Parole de Dieu nous place devant la générosité de l’appel du Seigneur "
+            "et nous dispose à accueillir avec foi la joie de son Royaume."
         )
     elif monition_quote:
-        monition_parts.append(f"La Parole nous en donne l’orientation : {monition_quote}.")
+        monition_parts.append(f"Une parole du jour en donne la tonalité : {monition_quote}.")
     closings = [
         "Entrons dans cette Eucharistie avec un cœur disponible, afin que la grâce reçue renouvelle notre foi et notre manière de servir.",
         "Accueillons cette Parole avec foi et laissons le Seigneur disposer nos cœurs à célébrer dignement les saints mystères.",
