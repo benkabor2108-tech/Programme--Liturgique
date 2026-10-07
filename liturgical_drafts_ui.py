@@ -165,7 +165,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
 
     existing = saved_drafts(state).get(draft_key)
     if isinstance(existing, dict):
-        if int(existing.get("generator_version", 0) or 0) < 4:
+        raw_generator_version = existing.get("generator_version", 0)\n        try:\n            generator_version = int(raw_generator_version or 0)\n        except (TypeError, ValueError):\n            generator_version = 0\n        if generator_version < 4:
             st.warning("🆕 Une nouvelle rédaction liturgique est disponible : utilisez le bouton ci-dessous pour actualiser l’ancien brouillon.")
             existing = None
         else:
