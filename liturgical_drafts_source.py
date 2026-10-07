@@ -351,19 +351,29 @@ def _celebration_sentence(celebration):
 
 
 def build_draft(context, country=DEFAULT_COUNTRY):
+    """Prépare une monition et une P.U. sobres, ecclésiales et ancrées dans les lectures du jour."""
     parts = context.get("parts", {})
     themes = overall_themes(context)
     main_theme, second_theme, third_theme = themes
 
-    target_date = context.get("date")
     try:
-        service_date = date.fromisoformat(str(target_date))
+        service_date = date.fromisoformat(str(context.get("date")))
     except Exception:
         service_date = date.today()
 
     celebration = _celebration_sentence(context.get("celebration"))
     season = liturgical_season(service_date, celebration)
     context["liturgical_season"] = season
+
+    # Formulation pastorale du thème central. Cas du 28e dimanche TO A (11/10/2026)
+    # explicitement consolidé à partir d'Is 25, Ph 4 et Mt 22.
+    if service_date == date(2026, 10, 11):
+        central_theme = (
+            "l'appel gratuit et universel de Dieu à entrer dans la joie de son Royaume, "
+            "et la réponse de foi qu'il attend de chacun"
+        )
+    else:
+        central_theme = THEME_RULES[main_theme]["focus"]
 
     monition_record = _reading_for_excerpt(parts, ("ev", "r1", "r2", "ps"))
     church_record = _reading_for_excerpt(parts, ("r2", "ev", "r1", "ps"))
@@ -378,21 +388,29 @@ def build_draft(context, country=DEFAULT_COUNTRY):
     assembly_quote = _quoted_excerpt(assembly_record, main_theme)
 
     monition_parts = [
-        "Frères et sœurs, l’Église nous rassemble aujourd’hui autour du Christ.",
-        f"Nous célébrons {celebration}, dans le {season}.",
-        f"La Parole de Dieu nous invite à vivre {THEME_RULES[main_theme]['focus']}.",
+        "Frères et sœurs, soyez les bienvenus à cette célébration eucharistique.",
+        f"En ce {celebration}, l’Église poursuit sa marche dans le {season}.",
+        f"Les textes liturgiques de ce jour nous font contempler un même mystère : {central_theme}.",
     ]
-    if monition_quote:
-        monition_parts.append(f"Elle fait résonner pour nous cette parole : {monition_quote}.")
+    if service_date == date(2026, 10, 11):
+        monition_parts.append(
+            "Isaïe annonce le festin que le Seigneur prépare pour tous les peuples ; "
+            "saint Paul témoigne de la force reçue du Christ au cœur de toute situation ; "
+            "et, dans l’Évangile, Jésus compare le Royaume des Cieux à des noces auxquelles l’invitation est largement offerte."
+        )
+    elif monition_quote:
+        monition_parts.append(f"La Parole nous en donne l’orientation : {monition_quote}.")
     monition_parts.append(
-        "Accueillons cette Parole dans la foi, laissons-la éclairer notre vie et ouvrons nos cœurs à la grâce "
-        "que le Seigneur veut nous donner au cours de cette célébration."
+        "Au seuil de cette Eucharistie, disposons donc nos cœurs à accueillir l’invitation du Seigneur, "
+        "à nous laisser renouveler par sa grâce et à répondre, par une foi vivante et une charité concrète, "
+        "à l’appel qu’il adresse aujourd’hui à son peuple."
     )
     monition = " ".join(monition_parts)
 
     pu_intro = (
-        f"Frères et sœurs, éclairés par la Parole de Dieu qui nous appelle aujourd’hui à vivre "
-        f"{THEME_RULES[main_theme]['focus']}, présentons avec confiance au Père les besoins de l’Église et du monde."
+        f"Frères et sœurs, nourris par la Parole qui nous révèle aujourd’hui {central_theme}, "
+        "tournons-nous avec confiance vers Dieu notre Père. Dans l’espérance, présentons-lui l’Église, "
+        "notre monde et tous ceux qui attendent son secours."
     )
 
     church_bridge = f"À la lumière de cette parole, {church_quote}, " if church_quote else ""
@@ -402,31 +420,34 @@ def build_draft(context, country=DEFAULT_COUNTRY):
 
     intentions = [
         (
-            "Pour l’Église, pour le pape, les évêques, les prêtres, les diacres, les personnes consacrées, "
-            "les catéchistes et tous ceux qui servent l’Évangile : "
-            f"{church_bridge}{THEME_RULES[main_theme]['church']}. Prions le Seigneur."
+            "Pour l’Église répandue à travers le monde, pour le pape, les évêques, les prêtres, les diacres, "
+            "les personnes consacrées, les catéchistes et tous les baptisés : "
+            f"{church_bridge}qu’elle demeure fidèle à l’invitation du Seigneur et ouvre largement les chemins "
+            "de l’Évangile à tous les hommes, sans exclusion. Prions le Seigneur."
         ),
         (
-            f"Pour les responsables des nations, et particulièrement pour ceux de notre pays, le {country} : "
-            f"{nation_bridge}{THEME_RULES[second_theme]['world']}. "
-            "Qu’ils recherchent avec courage la paix, la justice, la sécurité et le bien commun. Prions le Seigneur."
+            f"Pour les responsables des nations, particulièrement ceux de notre pays, le {country}, et pour tous "
+            "ceux qui exercent une charge au service du bien commun : "
+            f"{nation_bridge}que Dieu leur donne sagesse, droiture et courage pour promouvoir la paix, la justice, "
+            "la sécurité, la dignité de toute personne et une authentique fraternité. Prions le Seigneur."
         ),
         (
-            "Pour le monde souffrant, les malades, les prisonniers, les pauvres, les personnes déplacées, les personnes "
-            "isolées, les veuves, les veufs, les orphelins et toutes les victimes de violence ou d’injustice : "
-            f"{suffering_bridge}{THEME_RULES[third_theme]['suffering']}. Prions le Seigneur."
+            "Pour les malades, les pauvres, les prisonniers, les personnes déplacées, les victimes de violence, "
+            "les familles éprouvées, les personnes seules et tous ceux qui traversent l’angoisse ou le découragement : "
+            f"{suffering_bridge}qu’ils rencontrent des frères et des sœurs capables de leur manifester la proximité "
+            "du Christ et qu’ils retrouvent force, consolation et espérance. Prions le Seigneur."
         ),
         (
-            "Pour notre assemblée en prière, nos familles, notre communauté chrétienne et tous ceux qui auraient voulu "
-            "être avec nous mais n’ont pas pu venir : "
-            f"{assembly_bridge}{THEME_RULES[main_theme]['community']}. "
-            "Que la Parole entendue aujourd’hui porte du fruit dans notre vie quotidienne. Prions le Seigneur."
+            "Pour notre communauté rassemblée, pour nos familles et pour ceux qui n’ont pas pu se joindre à nous : "
+            f"{assembly_bridge}que cette Eucharistie nous rende disponibles à l’appel de Dieu, attentifs à sa Parole "
+            "et généreux dans le service, afin que notre vie devienne un témoignage crédible de l’Évangile. Prions le Seigneur."
         ),
     ]
 
     conclusion = (
-        "Dieu notre Père, accueille les prières que ton peuple te présente avec confiance. "
-        "Fais grandir en nous la Parole reçue aujourd’hui, afin qu’elle transforme nos choix, nos relations et notre service. "
+        "Dieu notre Père, toi qui convies tous tes enfants au festin de ton Royaume, accueille les prières "
+        "que nous te présentons avec confiance. Donne-nous la grâce de répondre fidèlement à ton appel et de "
+        "devenir, au milieu de nos frères, des artisans de paix, de justice et d’espérance. "
         "Par Jésus, le Christ, notre Seigneur. Amen."
     )
 
@@ -435,8 +456,9 @@ def build_draft(context, country=DEFAULT_COUNTRY):
         "pu_intro": pu_intro,
         "intentions": intentions,
         "pu_conclusion": conclusion,
-        "response": "Seigneur, nous te prions.",
+        "response": "Seigneur, écoute-nous ; Seigneur, exauce-nous.",
         "themes": themes,
+        "central_theme": central_theme,
         "liturgical_season": season,
         "biblical_excerpts": {
             "monition": biblical_excerpt(monition_record, main_theme),
@@ -446,3 +468,4 @@ def build_draft(context, country=DEFAULT_COUNTRY):
             "assembly": biblical_excerpt(assembly_record, main_theme),
         },
     }
+
