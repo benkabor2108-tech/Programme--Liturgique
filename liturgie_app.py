@@ -39,7 +39,7 @@ from weekend_generation import (
     weekend_service_days,
 )
 
-APP_VERSION_OVERRIDE = "2026.10.06-persistant-supabase-v3.10.24-liturgical-drafts-variety-v4"
+APP_VERSION_OVERRIDE = "2026.10.07-persistant-supabase-v3.10.25-liturgical-pu-v5"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
