@@ -170,7 +170,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
             generator_version = int(raw_generator_version or 0)
         except (TypeError, ValueError):
             generator_version = 0
-        if generator_version < 4:
+        if generator_version < 5:
             st.warning("🆕 Une nouvelle rédaction liturgique est disponible : utilisez le bouton ci-dessous pour actualiser l’ancien brouillon.")
             existing = None
         else:
@@ -284,7 +284,7 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
                 "zone_label": zone_label,
                 "celebration": celebration,
                 "liturgical_season": season,
-                "generator_version": draft.get("generator_version", 4),
+                "generator_version": draft.get("generator_version", 5),
                 "refs": refs,
                 "source_url": context.get("source_url", ""),
                 "monition": monition,
