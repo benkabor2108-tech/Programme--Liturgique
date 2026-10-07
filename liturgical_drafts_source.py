@@ -390,11 +390,18 @@ def build_draft(context, country=DEFAULT_COUNTRY):
     suffering_quote = _quoted_excerpt(suffering_record, third_theme)
     assembly_quote = _quoted_excerpt(assembly_record, main_theme)
 
-    monition_parts = [
-        "Frères et sœurs, soyez les bienvenus à cette célébration eucharistique.",
-        f"En ce {celebration}, l’Église poursuit sa marche dans le {season}.",
-        f"Les textes liturgiques de ce jour nous font contempler un même mystère : {central_theme}.",
+    variant = service_date.toordinal() % 3
+    openings = [
+        f"Frères et sœurs, en ce {celebration}, dans le {season}, le Seigneur nous rassemble autour de sa Parole et de son Eucharistie.",
+        f"Peuple de Dieu, l’Église nous accueille pour célébrer {celebration}, au cœur du {season}.",
+        f"Bien-aimés dans le Christ, notre assemblée entre aujourd’hui dans la grâce de {celebration}, en ce {season}.",
     ]
+    themes_intro = [
+        f"Les lectures de ce jour convergent vers cet appel : {central_theme}.",
+        f"À travers les textes proclamés, un même fil spirituel se dessine : {central_theme}.",
+        f"La Parole offerte à notre écoute met particulièrement en lumière {central_theme}.",
+    ]
+    monition_parts = [openings[variant], themes_intro[variant]]
     if service_date == date(2026, 10, 11):
         monition_parts.append(
             "Isaïe annonce le festin que le Seigneur prépare pour tous les peuples ; "
@@ -403,11 +410,12 @@ def build_draft(context, country=DEFAULT_COUNTRY):
         )
     elif monition_quote:
         monition_parts.append(f"La Parole nous en donne l’orientation : {monition_quote}.")
-    monition_parts.append(
-        "Au seuil de cette Eucharistie, disposons donc nos cœurs à accueillir l’invitation du Seigneur, "
-        "à nous laisser renouveler par sa grâce et à répondre, par une foi vivante et une charité concrète, "
-        "à l’appel qu’il adresse aujourd’hui à son peuple."
-    )
+    closings = [
+        "Entrons dans cette Eucharistie avec un cœur disponible, afin que la grâce reçue renouvelle notre foi et notre manière de servir.",
+        "Accueillons cette Parole avec foi et laissons le Seigneur disposer nos cœurs à célébrer dignement les saints mystères.",
+        "Ouvrons-nous à la grâce de Dieu : que la Parole reçue et le Pain partagé transforment notre vie et fortifient notre témoignage.",
+    ]
+    monition_parts.append(closings[variant])
     monition = " ".join(monition_parts)
 
     pu_intro = (
