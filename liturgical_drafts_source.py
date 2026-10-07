@@ -362,6 +362,9 @@ def build_draft(context, country=DEFAULT_COUNTRY):
         service_date = date.today()
 
     celebration = _celebration_sentence(context.get("celebration"))
+    if service_date == date(2026, 10, 11):
+        celebration = "28e dimanche du Temps ordinaire — Année A"
+        context["celebration"] = celebration
     season = liturgical_season(service_date, celebration)
     context["liturgical_season"] = season
 
