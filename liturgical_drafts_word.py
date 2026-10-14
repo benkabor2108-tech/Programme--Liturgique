@@ -68,7 +68,7 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
     run.bold = True
     run.font.size = Pt(14)
 
-    for block in str(monition or "").strip().split("\\n\\n"):
+    for block in str(monition or "").strip().split("\n\n"):
         if not block.strip():
             continue
         p = document.add_paragraph(" ".join(block.split()))
@@ -97,7 +97,8 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
             p.add_run(content[:-len(ending)].rstrip() + " ")
             p.add_run(ending).bold = True
         else:
-            p.add_run(content)
+            p.add_run(content + " ")
+            p.add_run(ending).bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
     footer = section.footer.paragraphs[0]
