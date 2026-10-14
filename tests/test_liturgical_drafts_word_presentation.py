@@ -9,7 +9,7 @@ class ReaderDocumentPresentationTests(unittest.TestCase):
     def test_monition_paragraphs_and_empty_intentions(self):
         doc = Document(io.BytesIO(build_word_document(
             {"celebration": "Célébration de test", "date_label": "18/10/2026"},
-            "Premier paragraphe.\\n\\nDeuxième paragraphe.", "",
+            "Premier paragraphe.\n\nDeuxième paragraphe.", "",
             ["Pour l'Église. Prions le Seigneur.", "", "Pour les malades. Prions le Seigneur."],
             "", "",
         )))
@@ -17,6 +17,19 @@ class ReaderDocumentPresentationTests(unittest.TestCase):
         self.assertIn("Premier paragraphe.", paragraphs)
         self.assertIn("Deuxième paragraphe.", paragraphs)
         self.assertFalse(any(p.strip() == "2." for p in paragraphs))
+
+    def test_word_adds_missing_prayer_endings_in_bold(self):
+        raw = build_word_document(
+            {}, "Monition.", "",
+            ["Pour les familles.", "Pour la paix. Prions le Seigneur.",
+             "Pour les malades.", "Pour les jeunes."], "", "",
+        )
+        doc = Document(io.BytesIO(raw))
+        prayer_paragraphs = [p for p in doc.paragraphs if "Prions le Seigneur." in p.text]
+        self.assertEqual(len(prayer_paragraphs), 4)
+        for paragraph in prayer_paragraphs:
+            self.assertEqual(paragraph.text.count("Prions le Seigneur."), 1)
+            self.assertTrue(any(run.bold and run.text == "Prions le Seigneur." for run in paragraph.runs))
 
     def test_reader_document_matches_layout_and_excludes_celebrant(self):
         meta = {
