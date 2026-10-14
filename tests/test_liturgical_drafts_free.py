@@ -4,6 +4,14 @@ from liturgical_drafts_free import ENDING, library, new_record, normalize_intent
 
 
 class ReaderWorkshopTests(unittest.TestCase):
+    def test_changed_date_drops_stale_aelf_references(self):
+        from liturgical_drafts_free import current_liturgical_meta
+        meta = {"celebration": "Dimanche", "refs": {"ev": "Jn 1"}, "source_url": "https://aelf.org", "date_label": "11/10/2026"}
+        self.assertEqual(current_liturgical_meta(meta, "2026-10-11"), meta)
+        self.assertEqual(current_liturgical_meta(meta, "2026-10-12"), {})
+        self.assertEqual(current_liturgical_meta(meta, ""), {})
+        self.assertEqual(meta["refs"]["ev"], "Jn 1")
+
     def test_workshop_date_has_no_shadowing_local_import(self):
         import inspect
         from liturgical_drafts_free import render_free_reader_workshop
