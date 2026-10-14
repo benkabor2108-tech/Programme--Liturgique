@@ -1,0 +1,30 @@
+name: Reader liturgical workshop checks
+
+on:
+  pull_request:
+    paths:
+      - "liturgical_drafts_*.py"
+      - "tests/test_liturgical_drafts*.py"
+      - ".github/workflows/reader-liturgical-tests.yml"
+  push:
+    branches:
+      - "feature/atelier-monitions-pu-sans-date"
+    paths:
+      - "liturgical_drafts_*.py"
+      - "tests/test_liturgical_drafts*.py"
+      - ".github/workflows/reader-liturgical-tests.yml"
+
+jobs:
+  reader-workshop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile reader modules
+        run: python -m compileall -q liturgical_drafts_free.py liturgical_drafts_pdf.py liturgical_drafts_word.py liturgical_drafts_source.py
+      - name: Run reader workshop regression tests
+        run: python -m unittest discover -s tests -p 'test_liturgical_drafts*.py' -v
