@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from liturgical_drafts_themes import APP_TIMEZONE
 from liturgical_drafts_word import build_word_document
+from liturgical_drafts_pdf import build_reader_pdf
 from liturgical_drafts_source import fetch_liturgical_context, build_draft
 
 ENDING = "Prions le Seigneur."
@@ -300,3 +301,16 @@ def render_free_reader_workshop(state, persist_callback=None):
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"reader_word_{identity}",
         )
+
+        try:
+            pdf = build_reader_pdf(
+                word_meta, monition,
+                [normalize_intention(value) for value in intentions],
+            )
+            st.download_button(
+                "📕 Télécharger le texte des lecteurs (PDF)", data=pdf,
+                file_name=f"lecteurs_monition_pu_{date_text or 'sans_date'}.pdf",
+                mime="application/pdf", key=f"reader_pdf_{identity}",
+            )
+        except Exception as exc:
+            st.warning(f"Export PDF temporairement indisponible : {exc}")
