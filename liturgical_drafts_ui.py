@@ -11,6 +11,7 @@ from liturgical_drafts_schedule import availability_for, is_major_event, major_c
 from liturgical_drafts_source import build_draft, fetch_liturgical_context, liturgical_season, normalize_text
 from liturgical_drafts_themes import AELF_ZONES, APP_TIMEZONE
 from liturgical_drafts_word import build_word_document
+from liturgical_drafts_free import render_free_reader_workshop
 from state_store import StateConflictError, save_state_if_revision
 
 
@@ -108,6 +109,10 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
         "à partir des textes liturgiques AELF. La monition mentionne le temps liturgique et peut intégrer une courte "
         "expression biblique du jour."
     )
+
+    render_free_reader_workshop(state, persist_callback=persist_callback)
+    st.divider()
+    st.subheader("Préparation automatique liée au calendrier (facultative)")
 
     now = datetime.now(APP_TIMEZONE)
     today = now.date()
