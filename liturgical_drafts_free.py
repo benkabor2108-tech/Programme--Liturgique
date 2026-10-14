@@ -173,6 +173,10 @@ def render_free_reader_workshop(state, persist_callback=None):
         record = new_record() if selected == choices[0] else dict(records[selected])
         identity = "new" if selected == choices[0] else selected
         title = st.text_input("Titre du document", value=record.get("title", ""), key=f"reader_title_{identity}")
+        pending_fields_key = f"reader_pending_fields_{identity}"
+        if pending_fields_key in st.session_state:
+            for field_key, field_value in st.session_state.pop(pending_fields_key).items():
+                st.session_state[field_key] = field_value
         pending_date_key = f"reader_pending_date_{identity}"
         if pending_date_key in st.session_state:
             st.session_state[f"reader_date_{identity}"] = st.session_state.pop(pending_date_key)
@@ -220,9 +224,10 @@ def render_free_reader_workshop(state, persist_callback=None):
                     "refs": {key: (context.get("parts", {}).get(key) or {}).get("ref", "") for key in ("r1", "ps", "r2", "ev")},
                     "source_url": context.get("source_url", ""),
                 }
-                st.session_state[f"reader_monition_{identity}"] = proposal["monition"]
-                for i, intention in enumerate(proposal["intentions"]):
-                    st.session_state[f"reader_intention_{identity}_{i}"] = intention
+                st.session_state[pending_fields_key] = {
+                    f"reader_monition_{identity}": proposal["monition"],
+                    **{f"reader_intention_{identity}_{i}": intention for i, intention in enumerate(proposal["intentions"])},
+                }
                 st.success("Rédaction préparée à partir des lectures AELF. Relisez avant validation.")
                 st.rerun()
             except Exception as exc:
@@ -233,11 +238,15 @@ def render_free_reader_workshop(state, persist_callback=None):
                 if proposal is None:
                     st.warning("Indiquez d'abord une orientation.")
                 else:
+                    pending_fields = {}
                     if proposal["monition"]:
-                        st.session_state[f"reader_monition_{identity}"] = proposal["monition"]
+                        pending_fields[f"reader_monition_{identity}"] = proposal["monition"]
                     if TARGETS[target] in ("both", "priere"):
-                        for i, intention in enumerate(proposal["intentions"]):
-                            st.session_state[f"reader_intention_{identity}_{i}"] = intention
+                        pending_fields.update({
+                            f"reader_intention_{identity}_{i}": intention
+                            for i, intention in enumerate(proposal["intentions"])
+                        })
+                    st.session_state[pending_fields_key] = pending_fields
                     st.info("Proposition insérée dans les champs : relisez et adaptez-la avant validation.")
                     st.rerun()
             except ValueError as exc:
