@@ -4,6 +4,15 @@ from liturgical_drafts_free import ENDING, library, new_record, normalize_intent
 
 
 class ReaderWorkshopTests(unittest.TestCase):
+    def test_aelf_date_widget_is_updated_before_creation(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_free.py").read_text(encoding="utf-8")
+        pre_widget = source.index('if pending_date_key in st.session_state:')
+        widget = source.index('date_text = st.text_input(')
+        self.assertLess(pre_widget, widget)
+        self.assertIn('st.session_state[pending_date_key] = liturgical_day.isoformat()', source)
+        self.assertNotIn('st.session_state[f"reader_date_{identity}"] = liturgical_day.isoformat()', source)
+
     def test_proclamation_export_requires_monition_and_four_intentions(self):
         prayers = ["Intention 1", "Intention 2", "Intention 3", "Intention 4"]
         self.assertEqual(reader_export_readiness("Monition", prayers), (True, []))
