@@ -304,12 +304,17 @@ def render_free_reader_workshop(state, persist_callback=None):
                 return
             previous = records.get(record_id)
             records[record_id] = updated
-            if not persist_callback(show_success=False):
+            try:
+                confirmed = bool(persist_callback(show_success=False))
+            except Exception as exc:
+                confirmed = False
+                st.error(f"Erreur de sauvegarde Supabase : {exc}")
+            if not confirmed:
                 if previous is None:
                     records.pop(record_id, None)
                 else:
                     records[record_id] = previous
-                st.error("Enregistrement distant non confirmé ; aucune version distante écrasée.")
+                st.error("Enregistrement distant non confirmé ; état local précédent restauré.")
             else:
                 st.success("Document enregistré dans Supabase.")
                 st.session_state["reader_workshop_selected"] = record_id
