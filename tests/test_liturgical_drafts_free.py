@@ -40,6 +40,12 @@ class ReaderWorkshopTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             propose_orientation("x" * 501, "both")
 
+    def test_invalid_library_never_overwritten(self):
+        state = {"reader_liturgical_texts": ["unexpected"]}
+        with self.assertRaises(ValueError):
+            library(state)
+        self.assertEqual(state["reader_liturgical_texts"], ["unexpected"])
+
     def test_old_drafts_unchanged(self):
         state = {"liturgical_drafts": {"2026-10-11|romain": {"monition": "Historique"}}}
         library(state)[new_record()["id"]] = new_record()
