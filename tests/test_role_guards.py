@@ -46,6 +46,12 @@ class RoleGuardRegressionTests(unittest.TestCase):
         self.assertIn('if not (is_main_tabs and is_principal):', WRAPPER)
         self.assertIn('["📝 Monitions & P.U."]', WRAPPER)
 
+    def test_workshop_is_only_called_inside_principal_tab(self):
+        ui = (ROOT / "liturgical_drafts_ui.py").read_text(encoding="utf-8")
+        self.assertIn("render_free_reader_workshop(state, persist_callback=persist_callback)", ui)
+        self.assertIn("render_liturgical_drafts_tab(state, persist_callback=persist_callback)", WRAPPER)
+        self.assertIn('if not (is_main_tabs and is_principal):', WRAPPER)
+
     def test_role_banner_describes_limited_adjoint_rights(self):
         self.assertIn('droits limités aux présences en cours', CORE)
         self.assertIn('et aux rappels WhatsApp', CORE)

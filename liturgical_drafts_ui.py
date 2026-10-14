@@ -11,6 +11,7 @@ from liturgical_drafts_schedule import availability_for, is_major_event, major_c
 from liturgical_drafts_source import build_draft, fetch_liturgical_context, liturgical_season, normalize_text
 from liturgical_drafts_themes import AELF_ZONES, APP_TIMEZONE
 from liturgical_drafts_word import build_word_document
+from liturgical_drafts_free import render_free_reader_workshop
 from state_store import StateConflictError, save_state_if_revision
 
 
@@ -108,6 +109,10 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
         "à partir des textes liturgiques AELF. La monition mentionne le temps liturgique et peut intégrer une courte "
         "expression biblique du jour."
     )
+
+    render_free_reader_workshop(state, persist_callback=persist_callback)
+    st.divider()
+    st.subheader("Préparation automatique liée au calendrier (facultative)")
 
     now = datetime.now(APP_TIMEZONE)
     today = now.date()
@@ -278,7 +283,10 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
     with col_save:
         if st.button("💾 Enregistrer le brouillon", use_container_width=True):
             stamp = datetime.now(APP_TIMEZONE).isoformat()
-            saved_drafts(state)[draft_key] = {
+            drafts_store = saved_drafts(state)
+            previous_draft = drafts_store.get(draft_key)
+            previous_audit_count = len(state.get("audit_log", []))
+            drafts_store[draft_key] = {
                 "date": service_date.isoformat(),
                 "zone": zone,
                 "zone_label": zone_label,
@@ -299,13 +307,21 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
                 "date": service_date.isoformat(),
                 "celebration": celebration,
             })
+            confirmed = False
             if callable(persist_callback):
-                if persist_callback(show_success=False):
-                    st.success("Brouillon enregistré dans Supabase.")
-                else:
-                    st.warning("Brouillon conservé dans la session, mais la sauvegarde Supabase a échoué.")
+                try:
+                    confirmed = bool(persist_callback(show_success=False))
+                except Exception as exc:
+                    st.error(f"Erreur de sauvegarde Supabase : {exc}")
+            if confirmed:
+                st.success("Brouillon enregistré dans Supabase.")
             else:
-                st.success("Brouillon enregistré dans l'état de l'application.")
+                if previous_draft is None:
+                    drafts_store.pop(draft_key, None)
+                else:
+                    drafts_store[draft_key] = previous_draft
+                del state["audit_log"][previous_audit_count:]
+                st.warning("Sauvegarde Supabase non confirmée : état précédent restauré ; le texte reste dans les champs.")
 
     with col_word:
         meta = {

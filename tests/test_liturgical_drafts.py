@@ -16,6 +16,15 @@ from liturgical_drafts import (
 
 
 class LiturgicalDraftTests(unittest.TestCase):
+    def test_dated_workshop_never_claims_unconfirmed_supabase_save(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_ui.py").read_text(encoding="utf-8")
+        self.assertIn('confirmed = bool(persist_callback(show_success=False))', source)
+        self.assertIn('except Exception as exc:', source)
+        self.assertIn('drafts_store.pop(draft_key, None)', source)
+        self.assertIn('drafts_store[draft_key] = previous_draft', source)
+        self.assertNotIn('st.success("Brouillon enregistré dans l\'état de l\'application.")', source)
+
     def test_sunday_unlocks_tuesday_at_18(self):
         sunday = date(2026, 9, 13)
         before = datetime(2026, 9, 8, 17, 59, tzinfo=APP_TIMEZONE)
@@ -62,7 +71,14 @@ class LiturgicalDraftTests(unittest.TestCase):
         self.assertEqual(len(draft["intentions"]), 4)
         self.assertIn("Burkina Faso", draft["intentions"][1])
         self.assertIn("prisonniers", draft["intentions"][2])
-        self.assertIn("n’ont pas pu venir", draft["intentions"][3])
+        self.assertIn("n’ont pas pu se joindre à nous", draft["intentions"][3])
+
+    def test_acclamation_not_used_as_biblical_excerpt(self):
+        from liturgical_drafts_source import biblical_excerpt
+        record = {"text": "– Acclamons la Parole de Dieu.\nLe Seigneur est proche de ceux qui l'invoquent avec confiance."}
+        excerpt = biblical_excerpt(record, "foi")
+        self.assertNotIn("Acclamons", excerpt)
+        self.assertIn("Le Seigneur", excerpt)
 
     def test_word_document_is_valid_and_simplified(self):
         meta = {
@@ -85,11 +101,12 @@ class LiturgicalDraftTests(unittest.TestCase):
         with ZipFile(io.BytesIO(data)) as archive:
             self.assertIn("word/document.xml", archive.namelist())
             xml = archive.read("word/document.xml").decode("utf-8")
-            self.assertIn("MONITION DU 13/09/2026", xml)
-            self.assertIn("PRIÈRE UNIVERSELLE DU 13/09/2026", xml)
+            self.assertIn("MONITION</w:t>", xml)
+            self.assertIn("13/09/2026", xml)
+            self.assertIn("PRIÈRE UNIVERSELLE</w:t>", xml)
             self.assertIn("Intention 4.", xml)
-            self.assertNotIn("Temps ordinaire", xml)
-            self.assertNotIn("Ex 32", xml)
+            self.assertIn("24E DIMANCHE DU TEMPS ORDINAIRE", xml)
+            self.assertIn("Ex 32", xml)
             self.assertNotIn("Introduction de test", xml)
             self.assertNotIn("Seigneur, nous te prions.", xml)
             self.assertNotIn("Conclusion de test", xml)
