@@ -212,6 +212,7 @@ def render_free_reader_workshop(state, persist_callback=None):
                 for i, intention in enumerate(proposal["intentions"]):
                     st.session_state[f"reader_intention_{identity}_{i}"] = intention
                 st.success("Rédaction préparée à partir des lectures AELF. Relisez avant validation.")
+                st.rerun()
             except Exception as exc:
                 st.error(f"Impossible de générer le document : {exc}")
         if st.button("✨ Proposer une rédaction à partir de cette orientation", key=f"reader_propose_{identity}"):
@@ -226,6 +227,7 @@ def render_free_reader_workshop(state, persist_callback=None):
                         for i, intention in enumerate(proposal["intentions"]):
                             st.session_state[f"reader_intention_{identity}_{i}"] = intention
                     st.info("Proposition insérée dans les champs : relisez et adaptez-la avant validation.")
+                    st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
         monition = st.text_area(
