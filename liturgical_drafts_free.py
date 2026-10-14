@@ -309,12 +309,12 @@ def render_free_reader_workshop(state, persist_callback=None):
                        + (f" Intentions manquantes : {detail}." if detail else ""))
         word_meta = dict(record.get("liturgical_meta") or {})
         word_meta.update(st.session_state.get(f"reader_meta_{identity}") or {})
-        if not word_meta.get("date_label") and date_text:
-            word_meta["date_label"] = date_text
+        # Le champ modifiable prévaut sur les métadonnées AELF anciennes.
+        word_meta["date_label"] = date.fromisoformat(date_text).strftime("%d/%m/%Y") if _valid_date(date_text) else (date_text or "")
         word = build_word_document(
             word_meta, monition, "",
             [normalize_intention(value) for value in intentions], "", "",
-        )
+        ) if ready else b""
         st.download_button(
             "📄 Télécharger le texte des lecteurs (Word)", data=word,
             file_name=f"lecteurs_monition_pu_{date_text or 'sans_date'}.docx",
@@ -322,7 +322,8 @@ def render_free_reader_workshop(state, persist_callback=None):
             key=f"reader_word_{identity}", disabled=not ready,
         )
 
-        try:
+        if ready:
+          try:
             pdf = build_reader_pdf(
                 word_meta, monition,
                 [normalize_intention(value) for value in intentions],
@@ -332,5 +333,5 @@ def render_free_reader_workshop(state, persist_callback=None):
                 file_name=f"lecteurs_monition_pu_{date_text or 'sans_date'}.pdf",
                 mime="application/pdf", key=f"reader_pdf_{identity}", disabled=not ready,
             )
-        except Exception as exc:
+          except Exception as exc:
             st.warning(f"Export PDF temporairement indisponible : {exc}")
