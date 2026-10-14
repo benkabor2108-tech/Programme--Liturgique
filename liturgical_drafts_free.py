@@ -44,6 +44,23 @@ def reader_export_readiness(monition, intentions):
     return bool(str(monition or "").strip()) and not missing, missing
 
 
+def current_liturgical_meta(meta, date_text):
+    """Écarte les références AELF si la date saisie ne correspond plus à leur source."""
+    result = dict(meta or {})
+    source_date = str(result.get("date_label") or "").strip()
+    selected_date = str(date_text or "").strip()
+    if not source_date:
+        return result
+    try:
+        source_iso = datetime.strptime(source_date, "%d/%m/%Y").date().isoformat()
+    except ValueError:
+        source_iso = source_date
+    if source_iso != selected_date:
+        for key in ("celebration", "refs", "source_url", "date_label"):
+            result.pop(key, None)
+    return result
+
+
 def _event_theme(orientation):
     """Classe une orientation sans la transformer en fait d'actualité vérifié."""
     from liturgical_drafts_source import normalize_text
@@ -282,13 +299,17 @@ def render_free_reader_workshop(state, persist_callback=None):
                 return
             record_id = record["id"]
             timestamp = datetime.now(APP_TIMEZONE).isoformat()
+            liturgical_meta = current_liturgical_meta(
+                st.session_state.get(f"reader_meta_{identity}", record.get("liturgical_meta", {})),
+                parsed_date,
+            )
             updated = {
                 **record, "id": record_id, "title": title.strip(),
                 "date": parsed_date, "orientation": orientation.strip(),
                 "orientation_target": TARGETS[target], "monition": monition.strip(),
                 "intentions": [normalize_intention(value) for value in intentions], "status": status, "updated_at": timestamp,
                 "versions": list(record.get("versions", [])),
-                "liturgical_meta": st.session_state.get(f"reader_meta_{identity}", record.get("liturgical_meta", {})),
+                "liturgical_meta": liturgical_meta,
             }
             if selected != choices[0]:
                 updated["versions"].append({
@@ -328,6 +349,7 @@ def render_free_reader_workshop(state, persist_callback=None):
                        + (f" Intentions manquantes : {detail}." if detail else ""))
         word_meta = dict(record.get("liturgical_meta") or {})
         word_meta.update(st.session_state.get(f"reader_meta_{identity}") or {})
+        word_meta = current_liturgical_meta(word_meta, date_text)
         # Le champ modifiable prévaut sur les métadonnées AELF anciennes.
         word_meta["date_label"] = date.fromisoformat(date_text).strftime("%d/%m/%Y") if _valid_date(date_text) else (date_text or "")
         word = build_word_document(
