@@ -62,7 +62,7 @@ class LiturgicalDraftTests(unittest.TestCase):
         self.assertEqual(len(draft["intentions"]), 4)
         self.assertIn("Burkina Faso", draft["intentions"][1])
         self.assertIn("prisonniers", draft["intentions"][2])
-        self.assertIn("n’ont pas pu venir", draft["intentions"][3])
+        self.assertIn("n’ont pas pu se joindre à nous", draft["intentions"][3])
 
     def test_acclamation_not_used_as_biblical_excerpt(self):
         from liturgical_drafts_source import biblical_excerpt
@@ -92,11 +92,12 @@ class LiturgicalDraftTests(unittest.TestCase):
         with ZipFile(io.BytesIO(data)) as archive:
             self.assertIn("word/document.xml", archive.namelist())
             xml = archive.read("word/document.xml").decode("utf-8")
-            self.assertIn("MONITION DU 13/09/2026", xml)
-            self.assertIn("PRIÈRE UNIVERSELLE DU 13/09/2026", xml)
+            self.assertIn("MONITION</w:t>", xml)
+            self.assertIn("13/09/2026", xml)
+            self.assertIn("PRIÈRE UNIVERSELLE</w:t>", xml)
             self.assertIn("Intention 4.", xml)
-            self.assertNotIn("Temps ordinaire", xml)
-            self.assertNotIn("Ex 32", xml)
+            self.assertIn("24E DIMANCHE DU TEMPS ORDINAIRE", xml)
+            self.assertIn("Ex 32", xml)
             self.assertNotIn("Introduction de test", xml)
             self.assertNotIn("Seigneur, nous te prions.", xml)
             self.assertNotIn("Conclusion de test", xml)
