@@ -15,15 +15,22 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
     section.right_margin = Cm(2.0)
 
     normal = document.styles["Normal"]
-    normal.font.name = "Aptos"
-    normal.font.size = Pt(11.5)
+    normal.font.name = "Times New Roman"
+    normal.font.size = Pt(12)
     normal.paragraph_format.space_after = Pt(6)
-    normal.paragraph_format.line_spacing = 1.15
+    normal.paragraph_format.line_spacing = 1.2
 
     date_label = str(meta.get("date_label", "")).strip()
 
     celebration = str(meta.get("celebration") or "").strip()
     references = str(meta.get("references") or "").strip()
+    if not references and isinstance(meta.get("refs"), dict):
+        refs = meta["refs"]
+        references = "  •  ".join(
+            str(refs.get(key) or "").strip()
+            for key in ("r1", "ps", "r2", "ev")
+            if str(refs.get(key) or "").strip()
+        )
     if celebration:
         top = document.add_paragraph()
         top.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -38,6 +45,8 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
         run.font.size = Pt(9)
     heading = document.add_paragraph()
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    heading.paragraph_format.space_before = Pt(12)
+    heading.paragraph_format.space_after = Pt(10)
     run = heading.add_run("MONITION")
     run.bold = True
     run.font.size = Pt(14)
@@ -47,12 +56,15 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
 
     heading = document.add_paragraph()
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    heading.paragraph_format.space_before = Pt(16)
+    heading.paragraph_format.space_after = Pt(10)
     run = heading.add_run("PRIÈRE UNIVERSELLE")
     run.bold = True
     run.font.size = Pt(14)
 
     for idx, intention in enumerate(list(intentions or [])[:4], start=1):
         p = document.add_paragraph()
+        p.paragraph_format.space_after = Pt(11)
         p.paragraph_format.left_indent = Cm(0.4)
         p.paragraph_format.first_line_indent = Cm(-0.4)
         lead = p.add_run(f"{idx}. ")
