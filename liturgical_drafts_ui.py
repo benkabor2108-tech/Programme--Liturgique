@@ -283,7 +283,10 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
     with col_save:
         if st.button("💾 Enregistrer le brouillon", use_container_width=True):
             stamp = datetime.now(APP_TIMEZONE).isoformat()
-            saved_drafts(state)[draft_key] = {
+            drafts_store = saved_drafts(state)
+            previous_draft = drafts_store.get(draft_key)
+            previous_audit_count = len(state.get("audit_log", []))
+            drafts_store[draft_key] = {
                 "date": service_date.isoformat(),
                 "zone": zone,
                 "zone_label": zone_label,
@@ -308,7 +311,12 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
                 if persist_callback(show_success=False):
                     st.success("Brouillon enregistré dans Supabase.")
                 else:
-                    st.warning("Brouillon conservé dans la session, mais la sauvegarde Supabase a échoué.")
+                    if previous_draft is None:
+                        drafts_store.pop(draft_key, None)
+                    else:
+                        drafts_store[draft_key] = previous_draft
+                    del state["audit_log"][previous_audit_count:]
+                    st.warning("Sauvegarde Supabase non confirmée : le brouillon reste dans les champs, sans modifier l’état enregistré.")
             else:
                 st.success("Brouillon enregistré dans l'état de l'application.")
 
