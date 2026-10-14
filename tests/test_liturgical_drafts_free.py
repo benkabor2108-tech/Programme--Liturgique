@@ -1,6 +1,6 @@
 import unittest
 
-from liturgical_drafts_free import ENDING, library, new_record, normalize_intention, propose_orientation
+from liturgical_drafts_free import ENDING, library, new_record, normalize_intention, propose_orientation, integrate_event
 
 
 class ReaderWorkshopTests(unittest.TestCase):
@@ -15,6 +15,21 @@ class ReaderWorkshopTests(unittest.TestCase):
                 self.assertEqual(len(proposal["intentions"]), 4)
                 self.assertEqual(bool(proposal["monition"]), target != "priere")
                 self.assertEqual("Anniversaire de la paroisse" in proposal["intentions"][2], target != "monition")
+
+    def test_event_placed_in_matching_intention(self):
+        base = {"monition": "Bienvenue.", "intentions": ["I1", "I2", "I3", "I4"]}
+        cases = [
+            ("personnes déplacées", 2),
+            ("paix au Burkina Faso", 1),
+            ("anniversaire paroissial", 3),
+            ("vocations dans l'Église", 0),
+        ]
+        for event, index in cases:
+            with self.subTest(event=event):
+                result = integrate_event(base, event, "both")
+                self.assertIn("Prions le Seigneur.", result["intentions"][index])
+                self.assertEqual(len(result["intentions"]), 4)
+                self.assertIn("Bienvenue.", result["monition"])
 
     def test_optional_orientation(self):
         self.assertIsNone(propose_orientation("", "both"))
