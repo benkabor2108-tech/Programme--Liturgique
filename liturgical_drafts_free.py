@@ -32,6 +32,34 @@ def normalize_intention(value):
     return (value + "\n" + ENDING).strip()
 
 
+def propose_orientation(orientation, target):
+    """Proposition éditable, sans présenter une information non vérifiée comme un fait."""
+    subject = " ".join(str(orientation or "").strip().split())
+    if not subject:
+        return None
+    if len(subject) > 500:
+        raise ValueError("Limitez l'orientation à 500 caractères.")
+    monition = (
+        "Frères et sœurs, rassemblés pour écouter la Parole de Dieu, "
+        "ouvrons nos cœurs à sa lumière. Portons également dans notre prière "
+        "cette intention particulière : " + subject.rstrip(".") + ". "
+        "Que cette célébration ravive notre foi, notre espérance et notre charité."
+    )
+    intentions = [
+        "Pour l'Église et ceux qui la servent : que le Seigneur les guide dans l'annonce de l'Évangile.",
+        "Pour les responsables des nations : qu'ils recherchent la justice, la paix et le bien commun.",
+        "Pour les personnes éprouvées, les malades et les déplacés : qu'elles trouvent secours et consolation.",
+        "Pour notre communauté : qu'elle grandisse dans l'unité, l'accueil et la fraternité.",
+    ]
+    if target in ("both", "priere"):
+        intentions[2] = (
+            "Pour toutes les personnes concernées par cette intention particulière : "
+            + subject.rstrip(".") + " ; que le Seigneur les soutienne et inspire notre solidarité."
+        )
+    return {"monition": monition if target in ("both", "monition") else "",
+            "intentions": intentions}
+
+
 def new_record():
     return {
         "id": uuid4().hex, "title": "", "date": None, "orientation": "",
@@ -93,6 +121,20 @@ def render_free_reader_workshop(state, persist_callback=None):
                 + ("monition et prière universelle" if TARGETS[target] == "both" else target.lower())
                 + ". Vérifier tout fait d'actualité avant de l'affirmer."
             )
+        if st.button("✨ Proposer une rédaction à partir de cette orientation", key=f"reader_propose_{identity}"):
+            try:
+                proposal = propose_orientation(orientation, TARGETS[target])
+                if proposal is None:
+                    st.warning("Indiquez d'abord une orientation.")
+                else:
+                    if proposal["monition"]:
+                        st.session_state[f"reader_monition_{identity}"] = proposal["monition"]
+                    if TARGETS[target] in ("both", "priere"):
+                        for i, intention in enumerate(proposal["intentions"]):
+                            st.session_state[f"reader_intention_{identity}_{i}"] = intention
+                    st.info("Proposition insérée dans les champs : relisez et adaptez-la avant validation.")
+            except ValueError as exc:
+                st.error(str(exc))
         monition = st.text_area(
             "Monition introductive", value=record.get("monition", ""),
             key=f"reader_monition_{identity}", height=200,
@@ -143,6 +185,8 @@ def render_free_reader_workshop(state, persist_callback=None):
                 st.error("Enregistrement distant non confirmé ; aucune version distante écrasée.")
             else:
                 st.success("Document enregistré." if callable(persist_callback) else "Document enregistré dans la session.")
+                st.session_state["reader_workshop_selected"] = record_id
+                st.rerun()
         word = build_word_document(
             {"date_label": date_text}, monition, "",
             [normalize_intention(value) for value in intentions], "", "",
