@@ -27,7 +27,7 @@ LABELS = [
 def normalize_intention(value):
     value = str(value or "").strip()
     if not value:
-        return ENDING
+        return ""
     while value.casefold().rstrip(". !").endswith("prions le seigneur"):
         value = value[:value.casefold().rfind("prions le seigneur")].rstrip(" .!\n")
     return (value + "\n" + ENDING).strip()
@@ -221,7 +221,7 @@ def render_free_reader_workshop(state, persist_callback=None):
             st.text_area(label, value=prior[i], key=f"reader_intention_{identity}_{i}", height=110)
             for i, label in enumerate(LABELS)
         ]
-        st.caption("La formule « Prions le Seigneur. » est ajoutée à chaque intention dans le document exporté. Les événements saisis servent d’orientation pastorale ; ils ne sont pas vérifiés automatiquement.")
+        st.caption("Rédaction sobre, naturelle et adaptée à la proclamation. La formule « Prions le Seigneur. » termine chaque intention renseignée. Les événements saisis servent d’orientation pastorale ; ils ne sont pas vérifiés automatiquement.")
         status = st.selectbox(
             "État", ["brouillon", "validé", "archivé"],
             index=["brouillon", "validé", "archivé"].index(
@@ -234,6 +234,9 @@ def render_free_reader_workshop(state, persist_callback=None):
                 parsed_date = date.fromisoformat(date_text).isoformat() if date_text else None
             except ValueError:
                 st.error("Date invalide. Utilisez AAAA-MM-JJ ou laissez ce champ vide.")
+                return
+            if status == "validé" and (not monition.strip() or any(not value.strip() for value in intentions)):
+                st.error("Pour valider, renseignez la monition et les quatre intentions.")
                 return
             record_id = record["id"]
             timestamp = datetime.now(APP_TIMEZONE).isoformat()
