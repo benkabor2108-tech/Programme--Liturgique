@@ -191,6 +191,12 @@ def render_free_reader_workshop(state, persist_callback=None):
                 with st.spinner("Lecture des textes AELF et préparation..."):
                     context = fetch_liturgical_context(liturgical_day.isoformat(), AELF_ZONES[zone_label])
                     proposal = integrate_event(build_draft(context), orientation, TARGETS[target])
+                st.session_state[f"reader_meta_{identity}"] = {
+                    "celebration": context.get("celebration", ""),
+                    "date_label": liturgical_day.strftime("%d/%m/%Y"),
+                    "refs": {key: (context.get("parts", {}).get(key) or {}).get("ref", "") for key in ("r1", "ps", "r2", "ev")},
+                    "source_url": context.get("source_url", ""),
+                }
                 st.session_state[f"reader_monition_{identity}"] = proposal["monition"]
                 for i, intention in enumerate(proposal["intentions"]):
                     st.session_state[f"reader_intention_{identity}_{i}"] = intention
@@ -246,6 +252,7 @@ def render_free_reader_workshop(state, persist_callback=None):
                 "orientation_target": TARGETS[target], "monition": monition.strip(),
                 "intentions": intentions, "status": status, "updated_at": timestamp,
                 "versions": list(record.get("versions", [])),
+                "liturgical_meta": st.session_state.get(f"reader_meta_{identity}", record.get("liturgical_meta", {})),
             }
             if selected != choices[0]:
                 updated["versions"].append({
@@ -266,8 +273,12 @@ def render_free_reader_workshop(state, persist_callback=None):
                 st.success("Document enregistré." if callable(persist_callback) else "Document enregistré dans la session.")
                 st.session_state["reader_workshop_selected"] = record_id
                 st.rerun()
+        word_meta = dict(record.get("liturgical_meta") or {})
+        word_meta.update(st.session_state.get(f"reader_meta_{identity}") or {})
+        if not word_meta.get("date_label") and date_text:
+            word_meta["date_label"] = date_text
         word = build_word_document(
-            {"date_label": date_text}, monition, "",
+            word_meta, monition, "",
             [normalize_intention(value) for value in intentions], "", "",
         )
         st.download_button(
