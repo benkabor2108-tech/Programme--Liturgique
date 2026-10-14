@@ -34,6 +34,13 @@ def normalize_intention(value):
     return (value + "\n" + ENDING).strip()
 
 
+def reader_export_readiness(monition, intentions):
+    """Vérifie les cinq textes obligatoires avant export pour proclamation."""
+    values = list(intentions or [])
+    missing = [i + 1 for i in range(4) if i >= len(values) or not str(values[i] or "").strip()]
+    return bool(str(monition or "").strip()) and not missing, missing
+
+
 def _event_theme(orientation):
     """Classe une orientation sans la transformer en fait d'actualité vérifié."""
     from liturgical_drafts_source import normalize_text
@@ -295,6 +302,11 @@ def render_free_reader_workshop(state, persist_callback=None):
                 st.success("Document enregistré dans Supabase.")
                 st.session_state["reader_workshop_selected"] = record_id
                 st.rerun()
+        ready, missing_intentions = reader_export_readiness(monition, intentions)
+        if not ready:
+            detail = ", ".join(str(i) for i in missing_intentions)
+            st.warning("Export de proclamation indisponible : complétez la monition et les quatre intentions."
+                       + (f" Intentions manquantes : {detail}." if detail else ""))
         word_meta = dict(record.get("liturgical_meta") or {})
         word_meta.update(st.session_state.get(f"reader_meta_{identity}") or {})
         if not word_meta.get("date_label") and date_text:
@@ -307,7 +319,7 @@ def render_free_reader_workshop(state, persist_callback=None):
             "📄 Télécharger le texte des lecteurs (Word)", data=word,
             file_name=f"lecteurs_monition_pu_{date_text or 'sans_date'}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key=f"reader_word_{identity}",
+            key=f"reader_word_{identity}", disabled=not ready,
         )
 
         try:
@@ -318,7 +330,7 @@ def render_free_reader_workshop(state, persist_callback=None):
             st.download_button(
                 "📕 Télécharger le texte des lecteurs (PDF)", data=pdf,
                 file_name=f"lecteurs_monition_pu_{date_text or 'sans_date'}.pdf",
-                mime="application/pdf", key=f"reader_pdf_{identity}",
+                mime="application/pdf", key=f"reader_pdf_{identity}", disabled=not ready,
             )
         except Exception as exc:
             st.warning(f"Export PDF temporairement indisponible : {exc}")
