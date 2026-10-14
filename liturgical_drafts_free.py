@@ -323,15 +323,15 @@ def render_free_reader_workshop(state, persist_callback=None):
         )
 
         if ready:
-          try:
-            pdf = build_reader_pdf(
-                word_meta, monition,
-                [normalize_intention(value) for value in intentions],
-            )
-            st.download_button(
-                "📕 Télécharger le texte des lecteurs (PDF)", data=pdf,
-                file_name=f"lecteurs_monition_pu_{date_text or 'sans_date'}.pdf",
-                mime="application/pdf", key=f"reader_pdf_{identity}", disabled=not ready,
-            )
-          except Exception as exc:
-            st.warning(f"Export PDF temporairement indisponible : {exc}")
+            try:
+                pdf = build_reader_pdf(
+                    word_meta, monition,
+                    [normalize_intention(value) for value in intentions],
+                )
+                st.download_button(
+                    "📕 Télécharger le texte des lecteurs (PDF)", data=pdf,
+                    file_name=f"lecteurs_monition_pu_{date_text or 'sans_date'}.pdf",
+                    mime="application/pdf", key=f"reader_pdf_{identity}", disabled=not ready,
+                )
+            except Exception as exc:
+                st.warning(f"Export PDF temporairement indisponible : {exc}")
