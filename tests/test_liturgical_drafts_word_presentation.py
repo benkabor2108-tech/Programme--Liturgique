@@ -17,6 +17,8 @@ class ReaderDocumentPresentationTests(unittest.TestCase):
         self.assertIn("Premier paragraphe.", paragraphs)
         self.assertIn("Deuxième paragraphe.", paragraphs)
         self.assertFalse(any(p.strip() == "2." for p in paragraphs))
+        self.assertTrue(any(p.startswith("2. Pour les malades.") for p in paragraphs))
+        self.assertFalse(any("document de préparation" in p.text for p in doc.sections[0].footer.paragraphs))
 
     def test_word_adds_missing_prayer_endings_in_bold(self):
         raw = build_word_document(
