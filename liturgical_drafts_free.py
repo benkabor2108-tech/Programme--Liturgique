@@ -173,6 +173,9 @@ def render_free_reader_workshop(state, persist_callback=None):
         record = new_record() if selected == choices[0] else dict(records[selected])
         identity = "new" if selected == choices[0] else selected
         title = st.text_input("Titre du document", value=record.get("title", ""), key=f"reader_title_{identity}")
+        pending_date_key = f"reader_pending_date_{identity}"
+        if pending_date_key in st.session_state:
+            st.session_state[f"reader_date_{identity}"] = st.session_state.pop(pending_date_key)
         date_text = st.text_input(
             "Date liturgique (facultative, AAAA-MM-JJ)", value=record.get("date") or "",
             key=f"reader_date_{identity}",
@@ -210,7 +213,7 @@ def render_free_reader_workshop(state, persist_callback=None):
                 with st.spinner("Lecture des textes AELF et préparation..."):
                     context = fetch_liturgical_context(liturgical_day.isoformat(), AELF_ZONES[zone_label])
                     proposal = integrate_event(build_draft(context), orientation, TARGETS[target])
-                st.session_state[f"reader_date_{identity}"] = liturgical_day.isoformat()
+                st.session_state[pending_date_key] = liturgical_day.isoformat()
                 st.session_state[f"reader_meta_{identity}"] = {
                     "celebration": context.get("celebration", ""),
                     "date_label": liturgical_day.strftime("%d/%m/%Y"),
