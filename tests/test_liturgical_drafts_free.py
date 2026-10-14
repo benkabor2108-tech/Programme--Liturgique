@@ -1,9 +1,16 @@
 import unittest
 
-from liturgical_drafts_free import ENDING, library, new_record, normalize_intention, propose_orientation, integrate_event
+from liturgical_drafts_free import ENDING, library, new_record, normalize_intention, propose_orientation, integrate_event, reader_export_readiness
 
 
 class ReaderWorkshopTests(unittest.TestCase):
+    def test_proclamation_export_requires_monition_and_four_intentions(self):
+        prayers = ["Intention 1", "Intention 2", "Intention 3", "Intention 4"]
+        self.assertEqual(reader_export_readiness("Monition", prayers), (True, []))
+        self.assertEqual(reader_export_readiness("", prayers), (False, []))
+        self.assertEqual(reader_export_readiness("Monition", prayers[:2]), (False, [3, 4]))
+        self.assertEqual(reader_export_readiness("Monition", [prayers[0], "", *prayers[2:]]), (False, [2]))
+
     def test_empty_intention_does_not_become_prayer(self):
         self.assertEqual(normalize_intention(""), "")
 
