@@ -82,9 +82,8 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
     run.bold = True
     run.font.size = Pt(14)
 
-    for idx, intention in enumerate(list(intentions or [])[:4], start=1):
-        if not str(intention or "").strip():
-            continue
+    nonempty_intentions = [value for value in list(intentions or [])[:4] if str(value or "").strip()]
+    for idx, intention in enumerate(nonempty_intentions, start=1):
         p = document.add_paragraph()
         p.paragraph_format.space_after = Pt(11)
         p.paragraph_format.left_indent = Cm(0.4)
@@ -100,11 +99,6 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
             p.add_run(content + " ")
             p.add_run(ending).bold = True
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-
-    footer = section.footer.paragraphs[0]
-    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    fr = footer.add_run("Programme liturgique — document de préparation")
-    fr.font.size = Pt(8)
 
     output = io.BytesIO()
     document.save(output)
