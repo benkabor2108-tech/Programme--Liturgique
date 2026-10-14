@@ -2,6 +2,8 @@ import io
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
 
@@ -37,12 +39,27 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
         run = top.add_run(celebration.upper())
         run.bold = True
         run.font.size = Pt(12)
-    if date_label or references:
+    if date_label:
         details = document.add_paragraph()
         details.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = details.add_run("  •  ".join(filter(None, [date_label, references])))
+        run = details.add_run(date_label)
+        run.font.size = Pt(9)
+    if references:
+        details = document.add_paragraph()
+        details.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = details.add_run(references)
         run.italic = True
         run.font.size = Pt(9)
+    if celebration or date_label or references:
+        divider = document.add_paragraph()
+        divider.paragraph_format.space_after = Pt(8)
+        ppr = divider._p.get_or_add_pPr()
+        borders = OxmlElement("w:pBdr")
+        bottom = OxmlElement("w:bottom")
+        for name, value in (("val", "single"), ("sz", "6"), ("color", "888888")):
+            bottom.set(qn("w:" + name), value)
+        borders.append(bottom)
+        ppr.append(borders)
     heading = document.add_paragraph()
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     heading.paragraph_format.space_before = Pt(12)
@@ -51,8 +68,11 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
     run.bold = True
     run.font.size = Pt(14)
 
-    p = document.add_paragraph(str(monition or "").strip())
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    for block in str(monition or "").strip().split("\\n\\n"):
+        if not block.strip():
+            continue
+        p = document.add_paragraph(" ".join(block.split()))
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
     heading = document.add_paragraph()
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -63,6 +83,8 @@ def build_word_document(meta, monition, pu_intro, intentions, pu_conclusion, res
     run.font.size = Pt(14)
 
     for idx, intention in enumerate(list(intentions or [])[:4], start=1):
+        if not str(intention or "").strip():
+            continue
         p = document.add_paragraph()
         p.paragraph_format.space_after = Pt(11)
         p.paragraph_format.left_indent = Cm(0.4)
