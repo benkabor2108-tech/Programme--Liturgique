@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, KeepTogether
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 
@@ -62,7 +62,8 @@ def build_reader_pdf(meta, monition, intentions):
         if part.strip():
             story.append(Paragraph(escape(" ".join(part.split())), base))
     story.append(Paragraph("<b>PRIÈRE UNIVERSELLE</b>", section))
-    for idx, raw in enumerate(list(intentions or [])[:4], 1):
+    nonempty_intentions = [value for value in list(intentions or [])[:4] if str(value or "").strip()]
+    for idx, raw in enumerate(nonempty_intentions, 1):
         body = str(raw or "").strip()
         ending = "Prions le Seigneur."
         if body.endswith(ending):
