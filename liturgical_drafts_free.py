@@ -272,7 +272,6 @@ def render_free_reader_workshop(state, persist_callback=None):
             ), key=f"reader_status_{identity}",
         )
         if st.button("💾 Enregistrer ce document", key=f"reader_save_{identity}"):
-            from datetime import date
             try:
                 parsed_date = date.fromisoformat(date_text).isoformat() if date_text else None
             except ValueError:
