@@ -183,6 +183,9 @@ def render_free_reader_workshop(state, persist_callback=None):
                 records.items(), key=lambda item: item[1].get("updated_at", ""), reverse=True
             )
         ]
+        pending_selection = st.session_state.pop("reader_workshop_pending_selection", None)
+        if pending_selection in choices:
+            st.session_state["reader_workshop_selected"] = pending_selection
         selected = st.selectbox(
             "Document à préparer ou modifier", choices,
             format_func=lambda key: key if key == choices[0] else (
@@ -340,7 +343,7 @@ def render_free_reader_workshop(state, persist_callback=None):
                 st.error("Enregistrement distant non confirmé ; état local précédent restauré.")
             else:
                 st.success("Document enregistré dans Supabase.")
-                st.session_state["reader_workshop_selected"] = record_id
+                st.session_state["reader_workshop_pending_selection"] = record_id
                 st.rerun()
         ready, missing_intentions = reader_export_readiness(monition, intentions)
         if not ready:
