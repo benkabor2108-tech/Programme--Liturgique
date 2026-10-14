@@ -4,6 +4,16 @@ from liturgical_drafts_free import ENDING, library, new_record, normalize_intent
 
 
 class ReaderWorkshopTests(unittest.TestCase):
+    def test_generated_fields_are_applied_before_streamlit_widgets(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_free.py").read_text(encoding="utf-8")
+        self.assertLess(source.index('if pending_fields_key in st.session_state:'),
+                        source.index('monition = st.text_area('))
+        self.assertIn('st.session_state[pending_fields_key] = pending_fields', source)
+        self.assertIn('st.session_state[pending_fields_key] = {', source)
+        self.assertNotIn('st.session_state[f"reader_monition_{identity}"] = proposal["monition"]', source)
+        self.assertNotIn('st.session_state[f"reader_intention_{identity}_{i}"] = intention', source)
+
     def test_aelf_date_widget_is_updated_before_creation(self):
         from pathlib import Path
         source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_free.py").read_text(encoding="utf-8")
