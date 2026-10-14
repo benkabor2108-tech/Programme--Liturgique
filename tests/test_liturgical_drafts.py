@@ -16,6 +16,15 @@ from liturgical_drafts import (
 
 
 class LiturgicalDraftTests(unittest.TestCase):
+    def test_dated_workshop_never_claims_unconfirmed_supabase_save(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_ui.py").read_text(encoding="utf-8")
+        self.assertIn('confirmed = bool(persist_callback(show_success=False))', source)
+        self.assertIn('except Exception as exc:', source)
+        self.assertIn('drafts_store.pop(draft_key, None)', source)
+        self.assertIn('drafts_store[draft_key] = previous_draft', source)
+        self.assertNotIn('st.success("Brouillon enregistré dans l\'état de l\'application.")', source)
+
     def test_sunday_unlocks_tuesday_at_18(self):
         sunday = date(2026, 9, 13)
         before = datetime(2026, 9, 8, 17, 59, tzinfo=APP_TIMEZONE)
