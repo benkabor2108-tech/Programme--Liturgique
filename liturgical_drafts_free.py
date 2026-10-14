@@ -76,7 +76,18 @@ def integrate_event(draft, orientation, target):
             "suffering": "Pour toutes les personnes qui traversent l'épreuve : qu'elles trouvent consolation, protection et soutien auprès de leurs frères et sœurs.",
             "community": "Pour notre communauté et nos familles : que le Seigneur fasse grandir entre nous la foi, la fraternité et l'attention aux plus fragiles.",
         }
-        result["intentions"][index] = prayer[theme] + " " + ENDING
+        # Le sujet reste visible pour que l'intention ne devienne pas générique.
+        # Une orientation saisie n'est pas pour autant une information vérifiée.
+        subject_clause = {
+            "church": "Nous te confions particulièrement : ",
+            "world": "Nous te confions particulièrement : ",
+            "suffering": "Nous te confions particulièrement : ",
+            "community": "Nous te confions particulièrement : ",
+        }[theme]
+        result["intentions"][index] = (
+            prayer[theme].rstrip(".") + ". "
+            + subject_clause + subject + ". " + ENDING
+        )
     result["orientation_used"] = subject
     result["orientation_theme"] = theme
     return result
@@ -248,7 +259,7 @@ def render_free_reader_workshop(state, persist_callback=None):
             timestamp = datetime.now(APP_TIMEZONE).isoformat()
             updated = {
                 **record, "id": record_id, "title": title.strip(),
-                "date": parsed_date, "orientation": orientation.strip(),
+                "date": parsed_date or (liturgical_day.isoformat() if st.session_state.get(f"reader_meta_{identity}") else None), "orientation": orientation.strip(),
                 "orientation_target": TARGETS[target], "monition": monition.strip(),
                 "intentions": intentions, "status": status, "updated_at": timestamp,
                 "versions": list(record.get("versions", [])),
