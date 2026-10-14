@@ -4,6 +4,9 @@ from liturgical_drafts_free import ENDING, library, new_record, normalize_intent
 
 
 class ReaderWorkshopTests(unittest.TestCase):
+    def test_empty_intention_does_not_become_prayer(self):
+        self.assertEqual(normalize_intention(""), "")
+
     def test_ending_not_duplicated(self):
         self.assertEqual(normalize_intention("Pour les malades. Prions le Seigneur."), "Pour les malades\n" + ENDING)
         self.assertEqual(normalize_intention("Pour les malades"), "Pour les malades\n" + ENDING)
