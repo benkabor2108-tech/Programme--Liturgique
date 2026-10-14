@@ -265,7 +265,7 @@ def render_free_reader_workshop(state, persist_callback=None):
                 **record, "id": record_id, "title": title.strip(),
                 "date": parsed_date, "orientation": orientation.strip(),
                 "orientation_target": TARGETS[target], "monition": monition.strip(),
-                "intentions": intentions, "status": status, "updated_at": timestamp,
+                "intentions": [normalize_intention(value) for value in intentions], "status": status, "updated_at": timestamp,
                 "versions": list(record.get("versions", [])),
                 "liturgical_meta": st.session_state.get(f"reader_meta_{identity}", record.get("liturgical_meta", {})),
             }
@@ -275,17 +275,24 @@ def render_free_reader_workshop(state, persist_callback=None):
                     "monition": record.get("monition", ""),
                     "intentions": record.get("intentions", []),
                     "orientation": record.get("orientation", ""),
+                    "date": record.get("date"),
+                    "title": record.get("title", ""),
+                    "status": record.get("status", "brouillon"),
+                    "liturgical_meta": record.get("liturgical_meta", {}),
                 })
+            if not callable(persist_callback):
+                st.error("Sauvegarde Supabase indisponible : document non enregistré. Vous pouvez conserver le texte par export.")
+                return
             previous = records.get(record_id)
             records[record_id] = updated
-            if callable(persist_callback) and not persist_callback(show_success=False):
+            if not persist_callback(show_success=False):
                 if previous is None:
                     records.pop(record_id, None)
                 else:
                     records[record_id] = previous
                 st.error("Enregistrement distant non confirmé ; aucune version distante écrasée.")
             else:
-                st.success("Document enregistré." if callable(persist_callback) else "Document enregistré dans la session.")
+                st.success("Document enregistré dans Supabase.")
                 st.session_state["reader_workshop_selected"] = record_id
                 st.rerun()
         word_meta = dict(record.get("liturgical_meta") or {})
