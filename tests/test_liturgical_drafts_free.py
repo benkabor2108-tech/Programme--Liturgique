@@ -4,6 +4,13 @@ from liturgical_drafts_free import ENDING, library, new_record, normalize_intent
 
 
 class ReaderWorkshopTests(unittest.TestCase):
+    def test_workshop_date_has_no_shadowing_local_import(self):
+        import inspect
+        from liturgical_drafts_free import render_free_reader_workshop
+        source = inspect.getsource(render_free_reader_workshop)
+        self.assertNotIn("from datetime import date", source)
+        self.assertIn("date.fromisoformat(date_text)", source)
+
     def test_generated_fields_are_applied_before_streamlit_widgets(self):
         from pathlib import Path
         source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_free.py").read_text(encoding="utf-8")
