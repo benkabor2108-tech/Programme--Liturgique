@@ -31,6 +31,7 @@ class ReaderWorkshopTests(unittest.TestCase):
             with self.subTest(event=event):
                 result = integrate_event(base, event, "both")
                 self.assertIn("Prions le Seigneur.", result["intentions"][index])
+                self.assertIn(event, result["intentions"][index])
                 self.assertEqual(len(result["intentions"]), 4)
                 self.assertIn("Bienvenue.", result["monition"])
 
