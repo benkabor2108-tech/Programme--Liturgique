@@ -316,6 +316,17 @@ def biblical_excerpt(record, theme="foi", max_words=16):
         if len(words) < 4:
             continue
         normalized = normalize_text(sentence)
+        # Ne jamais citer les acclamations, rubriques ou réponses comme Parole de Dieu.
+        excluded = (
+            "acclamons la parole de dieu", "parole du seigneur",
+            "louange a toi seigneur jesus", "gloire a toi seigneur",
+            "evangile de jesus christ", "alleluia", "amen",
+            "lecture de la", "lecture du", "psaume responsorial",
+        )
+        if any(token in normalized for token in excluded):
+            continue
+        if sentence.lstrip().startswith(("–", "-", "℟", "R/")):
+            continue
         score = sum(normalized.count(keyword) for keyword in keywords)
         length_penalty = 0 if len(words) <= max_words else min(5, (len(words) - max_words) // 4 + 1)
         candidates.append((score - length_penalty, -abs(len(words) - 10), sentence))
