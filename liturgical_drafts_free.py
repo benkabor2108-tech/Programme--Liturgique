@@ -203,6 +203,7 @@ def render_free_reader_workshop(state, persist_callback=None):
                 with st.spinner("Lecture des textes AELF et préparation..."):
                     context = fetch_liturgical_context(liturgical_day.isoformat(), AELF_ZONES[zone_label])
                     proposal = integrate_event(build_draft(context), orientation, TARGETS[target])
+                st.session_state[f"reader_date_{identity}"] = liturgical_day.isoformat()
                 st.session_state[f"reader_meta_{identity}"] = {
                     "celebration": context.get("celebration", ""),
                     "date_label": liturgical_day.strftime("%d/%m/%Y"),
@@ -262,7 +263,7 @@ def render_free_reader_workshop(state, persist_callback=None):
             timestamp = datetime.now(APP_TIMEZONE).isoformat()
             updated = {
                 **record, "id": record_id, "title": title.strip(),
-                "date": parsed_date or (liturgical_day.isoformat() if st.session_state.get(f"reader_meta_{identity}") else None), "orientation": orientation.strip(),
+                "date": parsed_date, "orientation": orientation.strip(),
                 "orientation_target": TARGETS[target], "monition": monition.strip(),
                 "intentions": intentions, "status": status, "updated_at": timestamp,
                 "versions": list(record.get("versions", [])),
