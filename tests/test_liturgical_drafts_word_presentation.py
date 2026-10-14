@@ -6,6 +6,18 @@ from liturgical_drafts_word import build_word_document
 
 
 class ReaderDocumentPresentationTests(unittest.TestCase):
+    def test_monition_paragraphs_and_empty_intentions(self):
+        doc = Document(io.BytesIO(build_word_document(
+            {"celebration": "Célébration de test", "date_label": "18/10/2026"},
+            "Premier paragraphe.\\n\\nDeuxième paragraphe.", "",
+            ["Pour l'Église. Prions le Seigneur.", "", "Pour les malades. Prions le Seigneur."],
+            "", "",
+        )))
+        paragraphs = [p.text for p in doc.paragraphs]
+        self.assertIn("Premier paragraphe.", paragraphs)
+        self.assertIn("Deuxième paragraphe.", paragraphs)
+        self.assertFalse(any(p.strip() == "2." for p in paragraphs))
+
     def test_reader_document_matches_layout_and_excludes_celebrant(self):
         meta = {
             "celebration": "29e dimanche du Temps ordinaire — Année A",
