@@ -33,23 +33,52 @@ def normalize_intention(value):
     return (value + "\n" + ENDING).strip()
 
 
+def _event_theme(orientation):
+    """Classe une orientation sans la transformer en fait d'actualité vérifié."""
+    from liturgical_drafts_source import normalize_text
+    words = normalize_text(orientation)
+    if any(token in words for token in ("deplace", "victime", "malade", "deuil", "insecurite", "souffrance", "catastrophe")):
+        return "suffering"
+    if any(token in words for token in ("paix", "nation", "pays", "burkina", "autorite", "election")):
+        return "world"
+    if any(token in words for token in ("paroisse", "communaute", "famille", "anniversaire", "jubile", "jeunes")):
+        return "community"
+    if any(token in words for token in ("eglise", "pape", "eveque", "pretre", "vocation")):
+        return "church"
+    return "community"
+
+
 def integrate_event(draft, orientation, target):
-    """Intègre l'orientation signalée sans ajouter de faits non vérifiés."""
-    event = " ".join(str(orientation or "").strip().split()).rstrip(".")
-    result = {"monition": draft.get("monition", ""), "intentions": list(draft.get("intentions", []))[:4]}
-    if not event:
+    """Adapte les intentions à un sujet signalé, sans recopier des consignes brutes."""
+    subject = " ".join(str(orientation or "").strip().split()).rstrip(".")
+    result = {"monition": str(draft.get("monition", "")).strip(),
+              "intentions": list(draft.get("intentions", []))[:4]}
+    if not subject:
         return result
-    if len(event) > 500:
+    if len(subject) > 500:
         raise ValueError("Orientation trop longue (maximum 500 caractères).")
+    theme = _event_theme(subject)
+    index = {"church": 0, "world": 1, "suffering": 2, "community": 3}[theme]
     if target in ("both", "monition"):
-        result["monition"] += " Nous portons également cette intention : " + event + ". Que la Parole de Dieu éclaire notre engagement fraternel."
+        bridge = {
+            "church": "Que notre communion avec l'Église affermisse notre foi et notre disponibilité à servir.",
+            "world": "Dans un monde qui aspire à la justice et à la paix, accueillons la Parole qui éclaire nos responsabilités.",
+            "suffering": "Portons dans notre cœur les personnes éprouvées, afin que cette célébration nourrisse notre compassion et notre solidarité.",
+            "community": "Que cette célébration fortifie les liens fraternels de notre communauté et renouvelle notre désir de servir.",
+        }
+        result["monition"] = (result["monition"] + " " + bridge[theme]).strip()
     if target in ("both", "priere"):
         while len(result["intentions"]) < 4:
             result["intentions"].append("")
-        base = result["intentions"][2].strip()
-        if base.endswith(ENDING):
-            base = base[:-len(ENDING)].rstrip()
-        result["intentions"][2] = base + " Nous confions aussi au Seigneur cette intention : " + event + ". " + ENDING
+        prayer = {
+            "church": "Pour l'Église et tous ceux qui la servent : qu'ils témoignent avec fidélité de l'Évangile et grandissent dans la communion.",
+            "world": "Pour les peuples et leurs responsables : que la recherche de la paix, de la justice et du bien commun guide leurs décisions.",
+            "suffering": "Pour toutes les personnes qui traversent l'épreuve : qu'elles trouvent consolation, protection et soutien auprès de leurs frères et sœurs.",
+            "community": "Pour notre communauté et nos familles : que le Seigneur fasse grandir entre nous la foi, la fraternité et l'attention aux plus fragiles.",
+        }
+        result["intentions"][index] = prayer[theme] + " " + ENDING
+    result["orientation_used"] = subject
+    result["orientation_theme"] = theme
     return result
 
 
@@ -165,7 +194,6 @@ def render_free_reader_workshop(state, persist_callback=None):
                 st.session_state[f"reader_monition_{identity}"] = proposal["monition"]
                 for i, intention in enumerate(proposal["intentions"]):
                     st.session_state[f"reader_intention_{identity}_{i}"] = intention
-                st.session_state[f"reader_date_{identity}"] = liturgical_day.isoformat()
                 st.success("Rédaction préparée à partir des lectures AELF. Relisez avant validation.")
             except Exception as exc:
                 st.error(f"Impossible de générer le document : {exc}")
@@ -193,7 +221,7 @@ def render_free_reader_workshop(state, persist_callback=None):
             st.text_area(label, value=prior[i], key=f"reader_intention_{identity}_{i}", height=110)
             for i, label in enumerate(LABELS)
         ]
-        st.caption("La formule « Prions le Seigneur. » est ajoutée à chaque intention dans le document exporté.")
+        st.caption("La formule « Prions le Seigneur. » est ajoutée à chaque intention dans le document exporté. Les événements saisis servent d’orientation pastorale ; ils ne sont pas vérifiés automatiquement.")
         status = st.selectbox(
             "État", ["brouillon", "validé", "archivé"],
             index=["brouillon", "validé", "archivé"].index(
