@@ -40,6 +40,14 @@ class ReaderWorkshopTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             propose_orientation("x" * 501, "both")
 
+    def test_workshop_requires_confirmed_persistence_and_preserves_versions(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_free.py").read_text(encoding="utf-8")
+        self.assertIn('if not callable(persist_callback):', source)
+        self.assertIn('if not persist_callback(show_success=False):', source)
+        self.assertIn('"intentions": [normalize_intention(value) for value in intentions]', source)
+        self.assertIn('"liturgical_meta": record.get("liturgical_meta", {})', source)
+
     def test_invalid_library_never_overwritten(self):
         state = {"reader_liturgical_texts": ["unexpected"]}
         with self.assertRaises(ValueError):
