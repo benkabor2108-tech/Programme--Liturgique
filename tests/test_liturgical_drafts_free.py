@@ -30,6 +30,12 @@ class ReaderWorkshopTests(unittest.TestCase):
         self.assertEqual(reader_export_readiness("Monition", prayers[:2]), (False, [3, 4]))
         self.assertEqual(reader_export_readiness("Monition", [prayers[0], "", *prayers[2:]]), (False, [2]))
 
+    def test_ending_alone_is_not_a_valid_petition(self):
+        prayers = ["Pour les malades", "Pour la paix", "Pour les familles", "Prions le Seigneur."]
+        self.assertEqual(reader_export_readiness("Monition", prayers), (False, [4]))
+        self.assertEqual(reader_export_readiness("Monition", ["Prions le Seigneur."] * 4), (False, [1, 2, 3, 4]))
+        self.assertEqual(reader_export_readiness("Monition", prayers[:3] + ["Pour la communauté. Prions le Seigneur."]), (True, []))
+
     def test_empty_intention_does_not_become_prayer(self):
         self.assertEqual(normalize_intention(""), "")
 
