@@ -3,11 +3,12 @@
 Stockage additif dans l'état Supabase existant : ne touche pas aux brouillons datés.
 L'atelier est appelé uniquement depuis l'onglet réservé au principal.
 """
-from datetime import datetime
+from datetime import datetime, date
 from uuid import uuid4
 
 from liturgical_drafts_themes import APP_TIMEZONE
 from liturgical_drafts_word import build_word_document
+from liturgical_drafts_source import fetch_liturgical_context, build_draft
 
 ENDING = "Prions le Seigneur."
 TARGETS = {
@@ -30,6 +31,34 @@ def normalize_intention(value):
     while value.casefold().rstrip(". !").endswith("prions le seigneur"):
         value = value[:value.casefold().rfind("prions le seigneur")].rstrip(" .!\n")
     return (value + "\n" + ENDING).strip()
+
+
+def integrate_event(draft, orientation, target):
+    """Intègre l'orientation signalée sans ajouter de faits non vérifiés."""
+    event = " ".join(str(orientation or "").strip().split()).rstrip(".")
+    result = {"monition": draft.get("monition", ""), "intentions": list(draft.get("intentions", []))[:4]}
+    if not event:
+        return result
+    if len(event) > 500:
+        raise ValueError("Orientation trop longue (maximum 500 caractères).")
+    if target in ("both", "monition"):
+        result["monition"] += " Nous portons également cette intention : " + event + ". Que la Parole de Dieu éclaire notre engagement fraternel."
+    if target in ("both", "priere"):
+        while len(result["intentions"]) < 4:
+            result["intentions"].append("")
+        base = result["intentions"][2].strip()
+        if base.endswith(ENDING):
+            base = base[:-len(ENDING)].rstrip()
+        result["intentions"][2] = base + " Nous confions aussi au Seigneur cette intention : " + event + ". " + ENDING
+    return result
+
+
+def _valid_date(value):
+    try:
+        date.fromisoformat(value)
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 def propose_orientation(orientation, target):
@@ -121,6 +150,25 @@ def render_free_reader_workshop(state, persist_callback=None):
                 + ("monition et prière universelle" if TARGETS[target] == "both" else target.lower())
                 + ". Vérifier tout fait d'actualité avant de l'affirmer."
             )
+        liturgical_day = st.date_input(
+            "Choisir le jour du calendrier liturgique",
+            value=date.fromisoformat(date_text) if _valid_date(date_text) else date.today(),
+            key=f"reader_calendar_{identity}",
+        )
+        from liturgical_drafts_themes import AELF_ZONES
+        zone_label = st.selectbox("Calendrier liturgique AELF", list(AELF_ZONES), key=f"reader_zone_{identity}")
+        if st.button("📖 Rédiger automatiquement à partir des lectures du jour", key=f"reader_aelf_{identity}"):
+            try:
+                with st.spinner("Lecture des textes AELF et préparation..."):
+                    context = fetch_liturgical_context(liturgical_day.isoformat(), AELF_ZONES[zone_label])
+                    proposal = integrate_event(build_draft(context), orientation, TARGETS[target])
+                st.session_state[f"reader_monition_{identity}"] = proposal["monition"]
+                for i, intention in enumerate(proposal["intentions"]):
+                    st.session_state[f"reader_intention_{identity}_{i}"] = intention
+                st.session_state[f"reader_date_{identity}"] = liturgical_day.isoformat()
+                st.success("Rédaction préparée à partir des lectures AELF. Relisez avant validation.")
+            except Exception as exc:
+                st.error(f"Impossible de générer le document : {exc}")
         if st.button("✨ Proposer une rédaction à partir de cette orientation", key=f"reader_propose_{identity}"):
             try:
                 proposal = propose_orientation(orientation, TARGETS[target])
