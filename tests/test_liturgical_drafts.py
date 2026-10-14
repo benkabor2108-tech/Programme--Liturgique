@@ -64,6 +64,13 @@ class LiturgicalDraftTests(unittest.TestCase):
         self.assertIn("prisonniers", draft["intentions"][2])
         self.assertIn("n’ont pas pu venir", draft["intentions"][3])
 
+    def test_acclamation_not_used_as_biblical_excerpt(self):
+        from liturgical_drafts_source import biblical_excerpt
+        record = {"text": "– Acclamons la Parole de Dieu.\nLe Seigneur est proche de ceux qui l'invoquent avec confiance."}
+        excerpt = biblical_excerpt(record, "foi")
+        self.assertNotIn("Acclamons", excerpt)
+        self.assertIn("Le Seigneur", excerpt)
+
     def test_word_document_is_valid_and_simplified(self):
         meta = {
             "date_label": "13/09/2026",
