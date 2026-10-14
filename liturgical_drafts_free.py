@@ -37,7 +37,10 @@ def normalize_intention(value):
 def reader_export_readiness(monition, intentions):
     """Vérifie les cinq textes obligatoires avant export pour proclamation."""
     values = list(intentions or [])
-    missing = [i + 1 for i in range(4) if i >= len(values) or not str(values[i] or "").strip()]
+    missing = [
+        i + 1 for i in range(4)
+        if i >= len(values) or not normalize_intention(values[i]).removesuffix(ENDING).strip()
+    ]
     return bool(str(monition or "").strip()) and not missing, missing
 
 
@@ -275,7 +278,7 @@ def render_free_reader_workshop(state, persist_callback=None):
             except ValueError:
                 st.error("Date invalide. Utilisez AAAA-MM-JJ ou laissez ce champ vide.")
                 return
-            if status == "validé" and (not monition.strip() or any(not value.strip() for value in intentions)):
+            if status == "validé" and not reader_export_readiness(monition, intentions)[0]:
                 st.error("Pour valider, renseignez la monition et les quatre intentions.")
                 return
             record_id = record["id"]
