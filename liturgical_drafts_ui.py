@@ -307,18 +307,21 @@ def render_liturgical_drafts_tab(state, persist_callback=None):
                 "date": service_date.isoformat(),
                 "celebration": celebration,
             })
+            confirmed = False
             if callable(persist_callback):
-                if persist_callback(show_success=False):
-                    st.success("Brouillon enregistré dans Supabase.")
-                else:
-                    if previous_draft is None:
-                        drafts_store.pop(draft_key, None)
-                    else:
-                        drafts_store[draft_key] = previous_draft
-                    del state["audit_log"][previous_audit_count:]
-                    st.warning("Sauvegarde Supabase non confirmée : le brouillon reste dans les champs, sans modifier l’état enregistré.")
+                try:
+                    confirmed = bool(persist_callback(show_success=False))
+                except Exception as exc:
+                    st.error(f"Erreur de sauvegarde Supabase : {exc}")
+            if confirmed:
+                st.success("Brouillon enregistré dans Supabase.")
             else:
-                st.success("Brouillon enregistré dans l'état de l'application.")
+                if previous_draft is None:
+                    drafts_store.pop(draft_key, None)
+                else:
+                    drafts_store[draft_key] = previous_draft
+                del state["audit_log"][previous_audit_count:]
+                st.warning("Sauvegarde Supabase non confirmée : état précédent restauré ; le texte reste dans les champs.")
 
     with col_word:
         meta = {
