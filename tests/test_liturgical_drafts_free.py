@@ -66,11 +66,19 @@ class ReaderWorkshopTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             propose_orientation("x" * 501, "both")
 
+    def test_save_exception_rolls_back_free_draft(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_free.py").read_text(encoding="utf-8")
+        self.assertIn('except Exception as exc:', source)
+        self.assertIn('confirmed = bool(persist_callback(show_success=False))', source)
+        self.assertIn('records.pop(record_id, None)', source)
+        self.assertIn('records[record_id] = previous', source)
+
     def test_workshop_requires_confirmed_persistence_and_preserves_versions(self):
         from pathlib import Path
         source = (Path(__file__).resolve().parents[1] / "liturgical_drafts_free.py").read_text(encoding="utf-8")
         self.assertIn('if not callable(persist_callback):', source)
-        self.assertIn('if not persist_callback(show_success=False):', source)
+        self.assertIn('confirmed = bool(persist_callback(show_success=False))', source)
         self.assertIn('"intentions": [normalize_intention(value) for value in intentions]', source)
         self.assertIn('"liturgical_meta": record.get("liturgical_meta", {})', source)
 
