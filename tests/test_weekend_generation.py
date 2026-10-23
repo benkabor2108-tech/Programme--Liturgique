@@ -28,6 +28,17 @@ class WeekendGenerationTests(unittest.TestCase):
         )
         self.assertTrue(all(day.weekday() in (5, 6) for day in days))
 
+    def test_november_2026_starts_on_previous_saturday(self):
+        days = weekend_service_days(2026, 11)
+        self.assertEqual([d.isoformat() for d in days], [
+            "2026-10-31", "2026-11-01",
+            "2026-11-07", "2026-11-08",
+            "2026-11-14", "2026-11-15",
+            "2026-11-21", "2026-11-22",
+            "2026-11-28", "2026-11-29",
+        ])
+        self.assertEqual(liturgical_reference_day(days[0]), date(2026, 11, 1))
+
     def test_service_day_labels(self):
         self.assertEqual(service_day_label(date(2026, 10, 3)), "Samedi")
         self.assertEqual(service_day_label(date(2026, 10, 4)), "Dimanche")
@@ -77,11 +88,8 @@ class WeekendGenerationTests(unittest.TestCase):
         self.assertIn("codes samedi sans lecteur français", wrapper)
         self.assertIn("sunday.weekday() == 6", wrapper)
         self.assertIn("Les 3 intervenants du samedi", wrapper)
-        self.assertIn("la même personne assure Monition + P.U. + Annonces", wrapper)
-        self.assertIn("f_ann = None", wrapper)
-        self.assertIn("m_ann = m_mon", wrapper)
-        self.assertIn('"m_ann": m_mon', wrapper)
-        self.assertIn("affichage annonces samedi même personne", wrapper)
+        self.assertIn("suppression annonces du samedi", wrapper)
+        self.assertIn("suppression annonces du dimanche", wrapper)
         # Le cœur historique reste inchangé; la correction passe par la couche protégée.
         self.assertIn("def sundays(year, month):", core)
         self.assertIn("d.weekday() == 6", core)
