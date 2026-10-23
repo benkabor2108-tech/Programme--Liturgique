@@ -23,7 +23,6 @@ class WeekendGenerationTests(unittest.TestCase):
                 "2026-10-10", "2026-10-11",
                 "2026-10-17", "2026-10-18",
                 "2026-10-24", "2026-10-25",
-                "2026-10-31",
             ],
         )
         self.assertTrue(all(day.weekday() in (5, 6) for day in days))
@@ -38,6 +37,13 @@ class WeekendGenerationTests(unittest.TestCase):
             "2026-11-28", "2026-11-29",
         ])
         self.assertEqual(liturgical_reference_day(days[0]), date(2026, 11, 1))
+
+    def test_month_boundary_saturday_belongs_only_to_following_month(self):
+        october = weekend_service_days(2026, 10)
+        november = weekend_service_days(2026, 11)
+        self.assertNotIn(date(2026, 10, 31), october)
+        self.assertEqual(november[0], date(2026, 10, 31))
+        self.assertEqual(len(set(october).intersection(november)), 0)
 
     def test_service_day_labels(self):
         self.assertEqual(service_day_label(date(2026, 10, 3)), "Samedi")
@@ -64,7 +70,7 @@ class WeekendGenerationTests(unittest.TestCase):
         refs = liturgical_reference_days(weekend_service_days(2026, 10))
         self.assertEqual(
             [day.isoformat() for day in refs],
-            ["2026-10-04", "2026-10-11", "2026-10-18", "2026-10-25", "2026-11-01"],
+            ["2026-10-04", "2026-10-11", "2026-10-18", "2026-10-25"],
         )
 
     def test_wrapper_targets_weekend_generation_without_rewriting_core(self):
