@@ -16,6 +16,7 @@ def weekend_service_days(year: int, month: int) -> list[date]:
     days = [
         day for day in cal.itermonthdates(int(year), int(month))
         if day.month == int(month) and day.weekday() in (5, 6)
+        and not (day.weekday() == 5 and (day + timedelta(days=1)).month != int(month))
     ]
     first_sunday = next((day for day in days if day.weekday() == 6), None)
     if first_sunday is not None:
