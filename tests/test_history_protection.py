@@ -142,6 +142,14 @@ class HistoryProtectionTests(unittest.TestCase):
         self.assertIn("Aucun mois actif", message)
         self.assertEqual(result, state)
 
+    def test_incomplete_cached_programme_cannot_be_exported(self):
+        transformed = self.transformed_core_source()
+        self.assertIn("_actual_days != _expected_days", transformed)
+        self.assertIn("Programme incomplet : génération refusée avant enregistrement", transformed)
+        self.assertIn("_generated_dates) != len(_expected_dates)", transformed)
+        self.assertIn("st.session_state.last_rows = []", transformed)
+        compile(transformed, "liturgie_app_core.py", "exec")
+
     def test_new_programme_has_no_announcement_assignments_or_export_columns(self):
         transformed = self.transformed_core_source()
         compile(transformed, "liturgie_app_core.py", "exec")
