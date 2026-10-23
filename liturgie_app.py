@@ -931,13 +931,6 @@ def full_fresh_start(state):
         '',
     )
 
-    # Un samedi appartenant au mois précédent ne doit pas être programmé deux fois.
-    source = _replace_once(
-        source,
-        '    if any(row.get("date") in month_dates for row in state["history"]):\n',
-        '    if any(row.get("date") in month_dates and is_history_row_active(row) for row in state["history"]):\n',
-        "détection doublons sur célébrations actives",
-    )
     # La colonne Annonces n'apparaît plus dans les exports des nouveaux programmes.
     source = source.replace(
         '        "Annonces FR", "Annonces MO",\n',
