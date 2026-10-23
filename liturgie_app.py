@@ -883,6 +883,80 @@ def full_fresh_start(state):
         "guide WhatsApp actuel",
     )
 
+    # Nouvelle règle : aucun poste « Annonces » dans les nouvelles programmations.
+    # Les historiques restent intacts et les anciens chargés d'annonces sont
+    # disponibles pour les autres fonctions suivant la rotation.
+    source = _replace_once(
+        source,
+        '            assign(state, m_mon, "ANNONCE", sunday)\n',
+        '',
+        "suppression annonces du samedi",
+    )
+    source = _replace_once(
+        source,
+        '            assign(state, f_ann, "ANNONCE", sunday)\n            assign(state, m_ann, "ANNONCE", sunday)\n',
+        '',
+        "suppression annonces du dimanche",
+    )
+    source = _replace_once(
+        source,
+        '            "Annonces": (f"MO : {names[m_mon]}" if is_saturday else f"FR : {names[f_ann]}\\nMO : {names[m_ann]}"),\n',
+        '',
+        "suppression de la colonne annonces générée",
+    )
+    source = _replace_once(
+        source,
+        '                    "m_ann": m_mon,\n',
+        '',
+        "suppression code annonces samedi",
+    )
+    source = _replace_once(
+        source,
+        '                    "f_ann": f_ann, "m_ann": m_ann,\n',
+        '',
+        "suppression codes annonces dimanche",
+    )
+    source = _replace_once(
+        source,
+        '            f_ann = choose_announcement(state, "FR", sunday, excluded, rng)\n            m_ann = choose_announcement(state, "MO", sunday, excluded, rng)\n',
+        '',
+        "aucune sélection pour les annonces",
+    )
+    source = source.replace(
+        "Les 3 intervenants du samedi sont tous mooréphones : 1re lecture, 2e lecture, puis une même personne pour Monition/P.U. + Annonces.",
+        "Les 3 intervenants du samedi sont tous mooréphones : 1re lecture, 2e lecture et Monition/P.U.",
+    )
+    source = source.replace(
+        '    if codes.get("f_ann") == code or codes.get("m_ann") == code:\n        return f"Annonces — {lang}"\n',
+        '',
+    )
+
+    # La colonne Annonces n'apparaît plus dans les exports des nouveaux programmes.
+    source = source.replace(
+        '        "Annonces FR", "Annonces MO",\n',
+        '',
+    )
+    source = source.replace(
+        '    widths = [11, 14, 14, 14, 19, 19, 18, 18, 17, 17]\n',
+        '    widths = [13, 17, 17, 17, 23, 23, 22, 22]\n',
+    )
+    source = source.replace(
+        '            Paragraph("Annonces", header_style),\n',
+        '',
+    )
+    source = source.replace(
+        '                Paragraph(annonces, cell_style),\n',
+        '',
+    )
+    source = source.replace(
+        '            colWidths=[25 * mm, 61 * mm, 55 * mm, 55 * mm, 55 * mm],\n',
+        '            colWidths=[28 * mm, 77 * mm, 73 * mm, 73 * mm],\n',
+    )
+    source = source.replace(
+        '            st.markdown(\n                f"**Annonces**  \\n"\n                f"• FR : {item[\'Annonces FR\'] or \'—\'}  \\n"\n                f"• MO : {item[\'Annonces MO\'] or \'—\'}"\n            )\n',
+        '',
+    )
+
     return source
 
 

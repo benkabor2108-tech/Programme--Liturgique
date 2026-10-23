@@ -142,6 +142,16 @@ class HistoryProtectionTests(unittest.TestCase):
         self.assertIn("Aucun mois actif", message)
         self.assertEqual(result, state)
 
+    def test_new_programme_has_no_announcement_assignments_or_export_columns(self):
+        transformed = self.transformed_core_source()
+        compile(transformed, "liturgie_app_core.py", "exec")
+        self.assertNotIn('assign(state, m_mon, "ANNONCE"', transformed)
+        self.assertNotIn('assign(state, f_ann, "ANNONCE"', transformed)
+        self.assertNotIn('assign(state, m_ann, "ANNONCE"', transformed)
+        self.assertNotIn('"Annonces": (f"MO', transformed)
+        self.assertNotIn('"Annonces FR", "Annonces MO",', transformed)
+        self.assertNotIn('Paragraph("Annonces", header_style)', transformed)
+
     def test_runtime_core_transform_compiles_and_blocks_destructive_ui(self):
         transformed = self.transformed_core_source()
         compile(transformed, "liturgie_app_core.py", "exec")

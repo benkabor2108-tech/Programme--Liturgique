@@ -13,7 +13,7 @@ PREVIEW = (ROOT / "whatsapp_reminder_preview.py").read_text(encoding="utf-8")
 class WhatsAppUiGuardTests(unittest.TestCase):
     def test_wrapper_preserves_version_override_and_reminder_preview(self):
         self.assertIn("APP_VERSION_OVERRIDE", WRAPPER)
-        self.assertIn("v3.10.25-liturgical-pu-v5", WRAPPER)
+        self.assertIn("2026.10.14-persistant-supabase-v3.10.26-atelier-libre", WRAPPER)
         self.assertIn("reminder_preview_rows", WRAPPER)
 
     def test_streamlit_next_sunday_ignores_cancelled_history(self):

@@ -11,13 +11,18 @@ from datetime import date, timedelta
 
 
 def weekend_service_days(year: int, month: int) -> list[date]:
-    """Retourne tous les samedis et dimanches du mois, par ordre chronologique."""
+    """Retourne les week-ends du mois et le samedi précédant son premier dimanche."""
     cal = calendar.Calendar(firstweekday=calendar.MONDAY)
-    return [
-        day
-        for day in cal.itermonthdates(int(year), int(month))
+    days = [
+        day for day in cal.itermonthdates(int(year), int(month))
         if day.month == int(month) and day.weekday() in (5, 6)
     ]
+    first_sunday = next((day for day in days if day.weekday() == 6), None)
+    if first_sunday is not None:
+        preceding_saturday = first_sunday - timedelta(days=1)
+        if preceding_saturday not in days:
+            days.insert(0, preceding_saturday)
+    return days
 
 
 def liturgical_reference_day(day: date) -> date:
