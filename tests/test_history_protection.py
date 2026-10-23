@@ -145,6 +145,8 @@ class HistoryProtectionTests(unittest.TestCase):
     def test_incomplete_cached_programme_cannot_be_exported(self):
         transformed = self.transformed_core_source()
         self.assertIn("_actual_days != _expected_days", transformed)
+        self.assertIn("Programme incomplet : génération refusée avant enregistrement", transformed)
+        self.assertIn("_generated_dates) != len(_expected_dates)", transformed)
         self.assertIn("st.session_state.last_rows = []", transformed)
         compile(transformed, "liturgie_app_core.py", "exec")
 
