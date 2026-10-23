@@ -931,6 +931,39 @@ def full_fresh_start(state):
         '',
     )
 
+    # Un samedi appartenant au mois précédent ne doit pas être programmé deux fois.
+    source = _replace_once(
+        source,
+        '    if any(row.get("date") in month_dates for row in state["history"]):\n',
+        '    if any(row.get("date") in month_dates and is_history_row_active(row) for row in state["history"]):\n',
+        "détection doublons sur célébrations actives",
+    )
+    # La colonne Annonces n'apparaît plus dans les exports des nouveaux programmes.
+    source = source.replace(
+        '        "Annonces FR", "Annonces MO",\n',
+        '',
+    )
+    source = source.replace(
+        '    widths = [11, 14, 14, 14, 19, 19, 18, 18, 17, 17]\n',
+        '    widths = [13, 17, 17, 17, 23, 23, 22, 22]\n',
+    )
+    source = source.replace(
+        '            Paragraph("Annonces", header_style),\n',
+        '',
+    )
+    source = source.replace(
+        '                Paragraph(annonces, cell_style),\n',
+        '',
+    )
+    source = source.replace(
+        '            colWidths=[25 * mm, 61 * mm, 55 * mm, 55 * mm, 55 * mm],\n',
+        '            colWidths=[28 * mm, 77 * mm, 73 * mm, 73 * mm],\n',
+    )
+    source = source.replace(
+        '            st.markdown(\n                f"**Annonces**  \\n"\n                f"• FR : {item[\'Annonces FR\'] or \'—\'}  \\n"\n                f"• MO : {item[\'Annonces MO\'] or \'—\'}"\n            )\n',
+        '',
+    )
+
     return source
 
 
