@@ -21,6 +21,15 @@ class HistoryProtectionTests(unittest.TestCase):
         self.assertIn('reference_day = d + timedelta(days=1) if d.weekday() == 5 else d', core)
         compile(core, "liturgie_app_core.py", "exec")
 
+    def test_pdf_a4_landscape_readability_settings(self):
+        core = (Path(__file__).resolve().parents[1] / "liturgie_app_core.py").read_text(encoding="utf-8")
+        pdf_section = core.split("def pdf_bytes(rows", 1)[1].split("def show_mobile_program(rows", 1)[0]
+        self.assertIn("pagesize=landscape(A4)", pdf_section)
+        self.assertIn("fontSize=8.5, leading=10.5", pdf_section)
+        self.assertIn("fontSize=8.6, leading=10.0", pdf_section)
+        self.assertIn('key = reference_day.strftime("%Y-%m")', pdf_section)
+        compile(core, "liturgie_app_core.py", "exec")
+
     def setUp(self):
         self.state = {
             "history": [
