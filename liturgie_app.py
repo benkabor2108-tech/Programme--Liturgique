@@ -39,7 +39,7 @@ from weekend_generation import (
     weekend_service_days,
 )
 
-APP_VERSION_OVERRIDE = "2026.10.14-persistant-supabase-v3.10.26-atelier-libre"
+APP_VERSION_OVERRIDE = "2026.10.23-persistant-supabase-v3.10.27-calendrier-verifie"
 CORE_PATH = Path(__file__).with_name("liturgie_app_core.py")
 
 
@@ -89,12 +89,6 @@ def _runtime_core_source():
         '            "date_reference": liturgical_reference_day(sunday).isoformat(),\n'
         '            "Dimanche": f"{service_day_label(sunday)} {sunday.strftime(\'%d/%m/%Y\')}",\n',
         "libellé samedi ou dimanche",
-    )
-    source = _replace_once(
-        source,
-        '        month_sundays = sundays(year, month)\n',
-        '        month_sundays = weekend_service_days(year, month)\n',
-        "sélection des célébrations du week-end",
     )
     source = _replace_once(
         source,
@@ -957,6 +951,31 @@ def full_fresh_start(state):
         '',
     )
 
+    # Diagnostic affiché avant la prévisualisation et avant toute génération.
+    # Le repère de version permet de distinguer un ancien déploiement Streamlit.
+    source = _replace_once(
+        source,
+        '        month_sundays = sundays(year, month)\n',
+        '''        month_sundays = weekend_service_days(year, month)
+        st.info(
+            "Version calendrier : 2026.10.23 / v3.10.27 — "
+            f"{len(month_sundays)} célébration(s) prévues pour "
+            f"{MONTHS[month - 1]} {year}. "
+            "Première : "
+            f"{month_sundays[0].strftime('%d/%m/%Y') if month_sundays else 'aucune'}."
+        )
+        if year == 2026 and month == 11 and (
+            len(month_sundays) != 10
+            or not month_sundays
+            or month_sundays[0].isoformat() != "2026-10-31"
+        ):
+            st.error(
+                "Calendrier incomplet : le samedi 31/10/2026 doit figurer "
+                "dans les dix célébrations de novembre. Ne générez pas."
+            )
+''',
+        "diagnostic visible calendrier mensuel",
+    )
     # Contrôle bloquant : ne jamais persister une génération sans toutes les dates.
     source = _replace_once(
         source,

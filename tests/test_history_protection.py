@@ -142,6 +142,12 @@ class HistoryProtectionTests(unittest.TestCase):
         self.assertIn("Aucun mois actif", message)
         self.assertEqual(result, state)
 
+    def test_visible_calendar_version_and_first_day_diagnostic(self):
+        transformed = self.transformed_core_source()
+        self.assertIn("Version calendrier : 2026.10.23 / v3.10.27", transformed)
+        self.assertIn("month_sundays = weekend_service_days(year, month)", transformed)
+        compile(transformed, "liturgie_app_core.py", "exec")
+
     def test_incomplete_cached_programme_cannot_be_exported(self):
         transformed = self.transformed_core_source()
         self.assertIn("_actual_days != _expected_days", transformed)
