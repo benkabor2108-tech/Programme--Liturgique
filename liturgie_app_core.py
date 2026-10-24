@@ -1786,20 +1786,20 @@ def pdf_bytes(rows, title="Programme liturgique"):
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "LiturgieTitle", parent=styles["Title"], fontName="Helvetica-Bold",
-        fontSize=15, leading=17, alignment=TA_CENTER, spaceAfter=4 * mm,
+        fontSize=16, leading=19, alignment=TA_CENTER, spaceAfter=4 * mm,
     )
     note_style = ParagraphStyle(
         "LiturgieNote", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=7.2, leading=8.5, textColor=colors.HexColor("#555555"),
+        fontSize=8.0, leading=9.5, textColor=colors.HexColor("#555555"),
         alignment=TA_CENTER, spaceAfter=3 * mm,
     )
     header_style = ParagraphStyle(
         "LiturgieHeader", parent=styles["Normal"], fontName="Helvetica-Bold",
-        fontSize=7.5, leading=8.5, alignment=TA_CENTER,
+        fontSize=8.6, leading=10.0, alignment=TA_CENTER,
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=7.4, leading=9.0,
+        fontSize=8.5, leading=10.5,
     )
     date_style = ParagraphStyle(
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
@@ -1882,8 +1882,8 @@ def pdf_bytes(rows, title="Programme liturgique"):
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
         ]))
         story.append(table)
