@@ -1853,10 +1853,15 @@ def pdf_bytes(rows, title="Programme liturgique"):
                 f"<b>1re :</b> {escape(item['Lecteur 1'] or '-')}<br/>"
                 f"<b>2e :</b> {escape(item['Lecteur 2'] or '-')}"
             )
-            monitions = (
-                f"<b>FR :</b> {escape(item['Monition/P.U. FR'] or '-')}<br/>"
-                f"<b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
-            )
+            # Samedi : une seule monition/P.U. en mooré.
+            # Ne pas afficher une ligne française vide comme une affectation manquante.
+            if str(item.get("Dimanche", "")).startswith("Samedi"):
+                monitions = f"<b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
+            else:
+                monitions = (
+                    f"<b>FR :</b> {escape(item['Monition/P.U. FR'] or '-')}" 
+                    f"<br/><b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
+                )
             annonces = (
                 f"<b>FR :</b> {escape(item['Annonces FR'] or '-')}<br/>"
                 f"<b>MO :</b> {escape(item['Annonces MO'] or '-')}"
