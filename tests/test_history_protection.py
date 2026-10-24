@@ -14,6 +14,13 @@ from scripts.whatsapp_automation import next_published_sunday
 
 
 class HistoryProtectionTests(unittest.TestCase):
+    def test_pdf_groups_vigil_with_following_month(self):
+        core = (Path(__file__).resolve().parents[1] / "liturgie_app_core.py").read_text(encoding="utf-8")
+        self.assertIn('reference_day = service_day + timedelta(days=1) if service_day.weekday() == 5 else service_day', core)
+        self.assertIn('key = reference_day.strftime("%Y-%m")', core)
+        self.assertIn('reference_day = d + timedelta(days=1) if d.weekday() == 5 else d', core)
+        compile(core, "liturgie_app_core.py", "exec")
+
     def setUp(self):
         self.state = {
             "history": [

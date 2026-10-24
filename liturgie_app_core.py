@@ -1763,7 +1763,9 @@ def pdf_month_title(month_rows, fallback="Programme liturgique"):
         if value:
             try:
                 d = date.fromisoformat(value)
-                return f"Programme liturgique - {MONTHS[d.month - 1]} {d.year}"
+                # Le samedi de vigile relève du mois du dimanche suivant.
+                reference_day = d + timedelta(days=1) if d.weekday() == 5 else d
+                return f"Programme liturgique - {MONTHS[reference_day.month - 1]} {reference_day.year}"
             except Exception:
                 pass
     return fallback
@@ -1803,13 +1805,20 @@ def pdf_bytes(rows, title="Programme liturgique"):
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
     )
 
-    # Une page paysage par mois dans l'historique.
+    # Regrouper par mois liturgique, non par mois civil : le samedi
+    # précédant le premier dimanche appartient au programme suivant.
+    # Les exports historiques multi-mois conservent une page par programme.
     groups = []
     current_key = None
     current_rows = []
     for row in rows:
         value = row.get("date", "")
-        key = value[:7] if len(value) >= 7 else "autre"
+        try:
+            service_day = date.fromisoformat(value)
+            reference_day = service_day + timedelta(days=1) if service_day.weekday() == 5 else service_day
+            key = reference_day.strftime("%Y-%m")
+        except (ValueError, TypeError):
+            key = "autre"
         if current_key is not None and key != current_key:
             groups.append(current_rows)
             current_rows = []
