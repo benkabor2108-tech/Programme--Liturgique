@@ -1786,20 +1786,20 @@ def pdf_bytes(rows, title="Programme liturgique"):
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "LiturgieTitle", parent=styles["Title"], fontName="Helvetica-Bold",
-        fontSize=15, leading=17, alignment=TA_CENTER, spaceAfter=4 * mm,
+        fontSize=16, leading=19, alignment=TA_CENTER, spaceAfter=4 * mm,
     )
     note_style = ParagraphStyle(
         "LiturgieNote", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=7.2, leading=8.5, textColor=colors.HexColor("#555555"),
+        fontSize=8.0, leading=9.5, textColor=colors.HexColor("#555555"),
         alignment=TA_CENTER, spaceAfter=3 * mm,
     )
     header_style = ParagraphStyle(
         "LiturgieHeader", parent=styles["Normal"], fontName="Helvetica-Bold",
-        fontSize=7.5, leading=8.5, alignment=TA_CENTER,
+        fontSize=8.6, leading=10.0, alignment=TA_CENTER,
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=7.4, leading=9.0,
+        fontSize=8.5, leading=10.5,
     )
     date_style = ParagraphStyle(
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
@@ -1853,10 +1853,15 @@ def pdf_bytes(rows, title="Programme liturgique"):
                 f"<b>1re :</b> {escape(item['Lecteur 1'] or '-')}<br/>"
                 f"<b>2e :</b> {escape(item['Lecteur 2'] or '-')}"
             )
-            monitions = (
-                f"<b>FR :</b> {escape(item['Monition/P.U. FR'] or '-')}<br/>"
-                f"<b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
-            )
+            # Samedi : une seule monition/P.U. en mooré.
+            # Ne pas afficher une ligne française vide comme une affectation manquante.
+            if str(item.get("Dimanche", "")).startswith("Samedi"):
+                monitions = f"<b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
+            else:
+                monitions = (
+                    f"<b>FR :</b> {escape(item['Monition/P.U. FR'] or '-')}" 
+                    f"<br/><b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
+                )
             annonces = (
                 f"<b>FR :</b> {escape(item['Annonces FR'] or '-')}<br/>"
                 f"<b>MO :</b> {escape(item['Annonces MO'] or '-')}"
@@ -1882,8 +1887,8 @@ def pdf_bytes(rows, title="Programme liturgique"):
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
         ]))
         story.append(table)
