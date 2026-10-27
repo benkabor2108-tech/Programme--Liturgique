@@ -1,6 +1,7 @@
 """Projets de programmation : aucun impact sur les rotations avant validation principale."""
 from copy import deepcopy
 from datetime import date
+from history_protection import is_history_row_active
 
 
 ROLES = ("r1", "r2", "f_mon", "m_mon")
@@ -26,7 +27,7 @@ def validate_draft(state, draft, sundays, programmable_codes):
     expected = [day.isoformat() for sunday in sundays(year, month) for day in (sunday - __import__("datetime").timedelta(days=1), sunday)] if any(row.get("celebration") == "Samedi soir" for row in rows) else [d.isoformat() for d in sundays(year, month)]
     if [row.get("date") for row in rows] != expected:
         raise ValueError("Les dimanches du projet ne correspondent pas au mois choisi.")
-    if any(row.get("date") in set(expected) for row in state.get("history", [])):
+    if any(row.get("date") in set(expected) and is_history_row_active(row) for row in state.get("history", [])):
         raise ValueError("Ce mois est déjà publié. Aucune modification n'a été enregistrée.")
     weekend_codes = {}
     for row in rows:
