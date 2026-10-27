@@ -389,7 +389,7 @@ def _runtime_core_source():
 
     raw_keys = (
         '    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", '
-        '"history", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:\n'
+        '"history", "program_drafts", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:\n'
     )
     if raw_keys not in source:
         raise RuntimeError("Migration d'état inattendue : liturgical_drafts ne peut pas être conservé.")
