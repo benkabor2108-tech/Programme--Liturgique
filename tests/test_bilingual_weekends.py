@@ -32,6 +32,35 @@ class WeekendTests(unittest.TestCase):
             )
         self.assertEqual(state["history"], [old])
 
+    def test_cancelled_trial_remains_archived_and_does_not_block_new_draft(self):
+        fr = [f"F{i}" for i in range(1, 5)]
+        mo = [f"M{i}" for i in range(1, 5)]
+        people = {c: {"next_role": None, "reading_count": 0,
+                      "monition_count": 0, "last_service": None} for c in fr + mo}
+        old = {"date": "2026-11-01", "history_status": "cancelled",
+               "cancel_reason": "Ancien essai"}
+        state = {"history": [deepcopy(old)], "people": people,
+                 "names": {c: c for c in people}, "next_first_language": "FR",
+                 "reading_pairs": [], "monition_pairs": []}
+        sundays = lambda y, m: [date(2026, 11, 1)]
+        refs = {"2026-11-01": {"r1": "A", "r2": "B", "ev": "C"}}
+        def assign(s, code, role, day):
+            p = s["people"][code]
+            p["next_role"] = "MONITION" if role == "LECTURE" else "LECTURE"
+            p["last_service"] = day.isoformat()
+        rows, simulated = generate_bilingual_weekends(
+            state, 2026, 11, refs, 2026, sundays, deepcopy,
+            lambda s, lang, d: fr if lang == "FR" else mo, assign,
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(state["history"], [old])
+        self.assertEqual(simulated["history"][0], old)
+        store_draft(state, 2026, 11, rows, "adjoint")
+        self.assertTrue(validate_draft(
+            state, state["program_drafts"]["2026-11"], sundays,
+            lambda s, lang, d: fr if lang == "FR" else mo,
+        ))
+
     def test_no_duplicate_per_weekend_and_no_publication(self):
         fr = [f"F{i}" for i in range(1, 11)]
         mo = [f"M{i}" for i in range(1, 9)]
