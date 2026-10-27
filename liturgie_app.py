@@ -967,7 +967,7 @@ def full_fresh_start(state):
     # Contrôle bloquant : ne jamais persister une génération sans toutes les dates.
     source = _replace_once(
         source,
-        '                rows, new_state = generate_month(state, year, month, refs, seed)\n                st.session_state.liturgie_state = new_state\n',
+        '                rows, new_state = generate_bilingual_weekends(state, year, month, refs, seed, sundays, normalize_state, programmable_codes, assign)\n                st.session_state.liturgie_state = new_state\n',
         '''                rows, new_state = generate_month(state, year, month, refs, seed)
                 _expected_dates = {d.isoformat() for d in weekend_service_days(year, month)}
                 _generated_dates = [str(row.get("date", "")) for row in rows]
