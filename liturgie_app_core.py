@@ -23,7 +23,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from history_protection import is_history_row_active
+from history_protection import is_history_row_active, cancel_selected_celebrations_non_destructive
 from program_drafts import store_draft, publish_draft, validate_draft
 from bilingual_weekends import generate_bilingual_weekends
 from programme_word import programme_docx_bytes
@@ -3345,6 +3345,44 @@ with attendance_tab:
 
 
 with generate_tab:
+    if IS_ADMIN:
+        with st.expander("🗃️ Archiver des célébrations précises sans supprimer l'historique"):
+            st.warning(
+                "Réservé à l'administrateur principal. Cette opération archive uniquement "
+                "les dates choisies et recalcule les rotations. Sauvegardez l'état JSON avant confirmation."
+            )
+            _active_dates = sorted({
+                str(r.get("date", "")) for r in state.get("history", [])
+                if is_history_row_active(r) and isinstance(r.get("date"), str)
+            })
+            with st.form("cancel_selected_celebrations_form"):
+                _selected_dates = st.multiselect(
+                    "Dates à archiver (samedi et dimanche séparément)",
+                    _active_dates, key="selected_cancel_dates",
+                )
+                _cancel_reason = st.text_input(
+                    "Motif obligatoire", key="selected_cancel_reason"
+                )
+                _cancel_confirm = st.checkbox(
+                    "Je confirme l'archivage sans suppression des seules dates sélectionnées."
+                )
+                _cancel_submit = st.form_submit_button("Archiver les dates sélectionnées")
+            if _cancel_submit:
+                if not _cancel_confirm:
+                    st.error("Confirmation obligatoire.")
+                else:
+                    _ok, _message, _updated = cancel_selected_celebrations_non_destructive(
+                        state, _selected_dates, rebuild_rotation_from_history,
+                        reason=_cancel_reason, timestamp=now_ouaga().isoformat(),
+                    )
+                    if _ok:
+                        st.session_state.liturgie_state = _updated
+                        st.session_state.last_rows = []
+                        if persist(show_success=False):
+                            st.success(_message)
+                            st.rerun()
+                    else:
+                        st.error(_message)
     if IS_ADJOINT:
         st.subheader("📝 Préparer un programme bilingue (samedi soir et dimanche)")
         year_d = int(st.number_input("Année du projet", 2020, 2100, _now.year, key="d_year"))
