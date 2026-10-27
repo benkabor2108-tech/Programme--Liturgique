@@ -2,6 +2,7 @@
 from copy import deepcopy
 from datetime import timedelta
 import random
+from history_protection import is_history_row_active
 
 
 def weekend_dates(sundays, year, month):
@@ -16,7 +17,7 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
     """Retourne (lignes, état simulé). Ne sauvegarde ni ne publie rien."""
     working = normalize_state(deepcopy(state))
     dates = weekend_dates(sundays, year, month)
-    existing = {row.get("date") for row in working.get("history", [])}
+    existing = {row.get("date") for row in working.get("history", []) if is_history_row_active(row)}
     if existing.intersection(d.isoformat() for d in dates):
         raise ValueError("Une célébration de cette période est déjà publiée.")
     rng = random.Random(seed + year * 100 + month)
