@@ -2,8 +2,13 @@
 
 ## Organisation
 Une seule célébration bilingue le samedi soir, et une célébration bilingue le dimanche.
-Chaque célébration prévoit une première lecture dans une langue et une deuxième dans l'autre,
-une monition et prière universelle en français et en mooré, et les annonces dans les deux langues.
+Chaque célébration, y compris **tous les samedis soir**, comporte le même ensemble de fonctions que le dimanche :
+- Première lecture en français ou en mooré et deuxième lecture dans l'autre langue ;
+- Monition introductive en français **et** monition introductive en mooré ;
+- Prière universelle en français **et** prière universelle en mooré, associées aux deux responsables des monitions ;
+- Annonces en français **et** annonces en mooré.
+
+Les deux langues sont donc obligatoires pour les lectures, les monitions et les prières universelles chaque samedi soir, sans fusion ni suppression d'une fonction. Les personnes affectées le samedi sont distinctes de celles du dimanche du même week-end.
 
 | Célébration | Date | Première lecture | Deuxième lecture | Monition / P.U. | Annonces |
 |---|---|---|---|---|---|
