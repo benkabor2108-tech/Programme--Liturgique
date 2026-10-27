@@ -389,7 +389,7 @@ def _runtime_core_source():
 
     raw_keys = (
         '    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", '
-        '"history", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:\n'
+        '"history", "program_drafts", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:\n'
     )
     if raw_keys not in source:
         raise RuntimeError("Migration d'état inattendue : liturgical_drafts ne peut pas être conservé.")
@@ -848,20 +848,8 @@ def full_fresh_start(state):
         "export PDF mensuel des présences",
     )
 
-    source = _replace_once(
-        source,
-        """with generate_tab:
-    if not IS_ADMIN:
-        st.subheader("✨ Générer")
-        st.info("La génération et la validation d'un nouveau programme sont réservées à l'administrateur principal.")
-""",
-        """with generate_tab:
-    if not (IS_ADMIN or IS_ADJOINT):
-        st.subheader("✨ Générer")
-        st.info("La génération d'un nouveau programme est réservée aux administrateurs autorisés.")
-""",
-        "génération du programme accessible aux adjoints",
-    )
+    # La gestion des projets par les adjoints est déjà intégrée au cœur.
+    # Ne pas réécrire un ancien bloc absent : préserver les contrôles de validation.
 
     source = _replace_once(
         source,
@@ -979,7 +967,7 @@ def full_fresh_start(state):
     # Contrôle bloquant : ne jamais persister une génération sans toutes les dates.
     source = _replace_once(
         source,
-        '                rows, new_state = generate_month(state, year, month, refs, seed)\n                st.session_state.liturgie_state = new_state\n',
+        '                rows, new_state = generate_bilingual_weekends(state, year, month, refs, seed, sundays, normalize_state, programmable_codes, assign)\n                st.session_state.liturgie_state = new_state\n',
         '''                rows, new_state = generate_month(state, year, month, refs, seed)
                 _expected_dates = {d.isoformat() for d in weekend_service_days(year, month)}
                 _generated_dates = [str(row.get("date", "")) for row in rows]

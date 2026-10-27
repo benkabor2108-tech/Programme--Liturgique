@@ -23,14 +23,17 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from history_protection import is_history_row_active
+from history_protection import is_history_row_active, cancel_selected_celebrations_non_destructive
+from program_drafts import store_draft, publish_draft, validate_draft
+from bilingual_weekends import generate_bilingual_weekends
+from programme_word import programme_docx_bytes
 
 APP_VERSION = "2026.09.02-persistant-supabase-v3.9.6-correctif-cycle15"
 TABLE_NAME = "liturgie_state"
 APP_PUBLIC_URL = "https://programme--liturgique-e39juey35cfq23az2qvup5.streamlit.app/"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
-ATTENDANCE_OPEN_TIME = time(18, 30)
+ATTENDANCE_OPEN_TIME = time(0, 0)
 ATTENDANCE_CLOSE_TIME = time(23, 59, 59)
 ATTENDANCE_MIN_COUNT = 2
 ATTENDANCE_MAX_J = 2  # 3 J ou plus = non éligible pour le mois programmé.
@@ -136,6 +139,7 @@ def initial_state():
         "monition_pairs": [],
         "next_first_language": "FR",
         "history": [],
+        "program_drafts": {},
         "attendance": {},
         "attendance_ignored": [],
         "auth_security": {},
@@ -190,6 +194,7 @@ def normalize_state(raw):
         "monition_pairs": [],
         "next_first_language": "FR",
         "history": [],
+        "program_drafts": {},
         "attendance": {},
         "attendance_ignored": [],
         "auth_security": {},
@@ -231,7 +236,7 @@ def normalize_state(raw):
             requested = highest + 1
         state["next_member_number"][lang] = max(highest + 1, requested)
 
-    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:
+    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "program_drafts", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:
         if key in raw:
             state[key] = deepcopy(raw[key])
 
@@ -973,9 +978,17 @@ def latest_saturday(day):
     return day - timedelta(days=days_back)
 
 
+def attendance_saturday_for_date(day):
+    """Samedi associé à la fenêtre vendredi 00:00 → lundi 23:59:59."""
+    if day.weekday() == 4:
+        return day + timedelta(days=1)
+    return latest_saturday(day)
+
+
 def attendance_window(saturday):
-    start = datetime.combine(saturday, ATTENDANCE_OPEN_TIME, tzinfo=APP_TIMEZONE)
-    close_day = saturday + timedelta(days=1)
+    start_day = saturday - timedelta(days=1)
+    close_day = saturday + timedelta(days=2)
+    start = datetime.combine(start_day, ATTENDANCE_OPEN_TIME, tzinfo=APP_TIMEZONE)
     end = datetime.combine(close_day, ATTENDANCE_CLOSE_TIME, tzinfo=APP_TIMEZONE)
     return start, end
 
@@ -1075,6 +1088,12 @@ def attendance_actor_label(role):
 
 
 def save_attendance_sheet(state, saturday, statuses, actor_role, reason=""):
+    # Vérifier les droits à l'enregistrement, indépendamment de l'interface.
+    if actor_role != "principal":
+        if actor_role != "adjoint" or not attendance_is_open(saturday):
+            return False, "La période de saisie est fermée pour les administrateurs adjoints."
+    if actor_role == "principal" and not attendance_is_open(saturday) and not str(reason).strip():
+        return False, "Un motif est obligatoire pour corriger une feuille hors période."
     sheet, _ = ensure_attendance_sheet(state, saturday, actor=attendance_actor_label(actor_role))
     clean = {}
     for code in sheet.get("members", []):
@@ -2684,9 +2703,9 @@ IS_ADMIN = principal_mode()
 IS_ADJOINT = adjoint_mode()
 CAN_EDIT_ATTENDANCE = staff_mode()
 
-# Création automatique de la feuille pendant la fenêtre samedi 18 h 30 → dimanche 23 h 59.
+# Création automatique de la feuille pendant la fenêtre vendredi 00 h 00 → lundi 23 h 59.
 _now = now_ouaga()
-_current_saturday = latest_saturday(_now.date())
+_current_saturday = attendance_saturday_for_date(_now.date())
 _current_attendance_open = attendance_is_open(_current_saturday, _now)
 if CAN_EDIT_ATTENDANCE and _current_attendance_open and not attendance_is_ignored(state, _current_saturday):
     _sheet, _created = ensure_attendance_sheet(state, _current_saturday, actor=attendance_actor_label(current_role()))
@@ -2713,7 +2732,7 @@ if CAN_EDIT_ATTENDANCE and _current_attendance_open and not attendance_is_ignore
         @st.dialog("📋 Feuille de présence ouverte")
         def _attendance_notice():
             st.success(f"Feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} ouverte.")
-            st.write("Renseignez P, J ou A dans l'onglet **📋 Présences**. La feuille sera verrouillée dimanche à 23 h 59.")
+            st.write("Renseignez P, J ou A dans l'onglet **📋 Présences**. La saisie des adjoints sera verrouillée lundi à 23 h 59.")
             st.caption("P = présent · J = absence justifiée comptée comme présence · A = absence non justifiée.")
         _attendance_notice()
         st.session_state[_notice_key] = True
@@ -3092,7 +3111,7 @@ with attendance_tab:
             f"0️⃣ Présences remises à zéro pour le samedi {_current_saturday.strftime('%d/%m/%Y')}. "
             "Cette feuille ne compte plus dans le bilan du mois."
         )
-        if IS_ADMIN and _current_attendance_open:
+        if IS_ADMIN:
             if st.button("↩️ Réactiver cette feuille", key=f"restore_attendance_{attendance_key}"):
                 restore_attendance_sheet(state, _current_saturday, "principal")
                 st.session_state.liturgie_state = state
@@ -3102,13 +3121,13 @@ with attendance_tab:
     elif _current_attendance_open:
         st.success(
             f"🟢 Feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} ouverte "
-            "jusqu'au dimanche 23 h 59."
+            "jusqu'au lundi 23 h 59."
         )
         if current_sheet:
             if CAN_EDIT_ATTENDANCE:
                 st.info(
                     "Vous pouvez renseigner ou corriger cette feuille tant que la fenêtre est ouverte. "
-                    "Après dimanche 23 h 59, seul l'administrateur principal pourra la corriger."
+                    "Après lundi 23 h 59, seul l'administrateur principal pourra la corriger."
                 )
                 with st.form(f"attendance_current_{attendance_key}"):
                     current_statuses = {}
@@ -3153,10 +3172,10 @@ with attendance_tab:
         elif not CAN_EDIT_ATTENDANCE:
             st.info("La feuille sera créée automatiquement lorsqu'un administrateur ouvrira l'application pendant la fenêtre de saisie.")
     else:
-        if _now < open_start and _now.date() == _current_saturday:
+        if _now < open_start:
             st.info(
                 f"⏳ La feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} "
-                "s'ouvrira automatiquement à 18 h 30."
+                "s'ouvrira automatiquement vendredi à 00 h 00."
             )
         else:
             st.info(
@@ -3326,9 +3345,121 @@ with attendance_tab:
 
 
 with generate_tab:
+    if IS_ADMIN:
+        with st.expander("🗃️ Archiver des célébrations précises sans supprimer l'historique"):
+            st.warning(
+                "Réservé à l'administrateur principal. Cette opération archive uniquement "
+                "les dates choisies et recalcule les rotations. Sauvegardez l'état JSON avant confirmation."
+            )
+            _active_dates = sorted({
+                str(r.get("date", "")) for r in state.get("history", [])
+                if is_history_row_active(r) and isinstance(r.get("date"), str)
+            })
+            with st.form("cancel_selected_celebrations_form"):
+                _selected_dates = st.multiselect(
+                    "Dates à archiver (samedi et dimanche séparément)",
+                    _active_dates, key="selected_cancel_dates",
+                )
+                _cancel_reason = st.text_input(
+                    "Motif obligatoire", key="selected_cancel_reason"
+                )
+                _cancel_confirm = st.checkbox(
+                    "Je confirme l'archivage sans suppression des seules dates sélectionnées."
+                )
+                _cancel_submit = st.form_submit_button("Archiver les dates sélectionnées")
+            if _cancel_submit:
+                if not _cancel_confirm:
+                    st.error("Confirmation obligatoire.")
+                else:
+                    _ok, _message, _updated = cancel_selected_celebrations_non_destructive(
+                        state, _selected_dates, rebuild_rotation_from_history,
+                        reason=_cancel_reason, timestamp=now_ouaga().isoformat(),
+                    )
+                    if _ok:
+                        st.session_state.liturgie_state = _updated
+                        st.session_state.last_rows = []
+                        if persist(show_success=False):
+                            st.success(_message)
+                            st.rerun()
+                    else:
+                        st.error(_message)
+    if IS_ADJOINT:
+        st.subheader("📝 Préparer un programme bilingue (samedi soir et dimanche)")
+        year_d = int(st.number_input("Année du projet", 2020, 2100, _now.year, key="d_year"))
+        month_d = st.selectbox("Mois du projet", range(1, 13), format_func=lambda m: MONTHS[m - 1], key="d_month")
+        seed_d = int(st.number_input("Graine", 0, 999999, 2026, key="d_seed"))
+        if st.button("Générer un projet sans publier"):
+            try:
+                days_d = sundays(year_d, month_d)
+                refs_d, errors_d = fetch_month_aelf_refs(days_d, "romain")
+                if errors_d:
+                    raise ValueError(str(errors_d))
+                rows_d, _ = generate_bilingual_weekends(state, year_d, month_d, refs_d, seed_d, sundays, normalize_state, programmable_codes, assign)
+                store_draft(state, year_d, month_d, rows_d, current_adjoint_label())
+                st.session_state.liturgie_state = state
+                if persist(show_success=True):
+                    st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+    if IS_ADMIN or IS_ADJOINT:
+        drafts = state.get("program_drafts", {})
+        if drafts:
+            st.subheader("📁 Projets de programmes")
+            draft_id = st.selectbox("Projet", sorted(drafts), key="draft_selection")
+            draft = drafts[draft_id]
+            st.download_button(
+                "📝 Télécharger le projet — Word",
+                data=programme_docx_bytes(
+                    draft["rows"], title=f"Projet liturgique {draft_id}", provisional=True
+                ),
+                file_name=f"projet_liturgique_{draft_id}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="draft_word_" + draft_id,
+            )
+            st.download_button(
+                "📄 Télécharger le projet — PDF",
+                data=pdf_bytes(draft["rows"], title=f"PROJET NON VALIDÉ — {draft_id}"),
+                file_name=f"projet_liturgique_{draft_id}.pdf",
+                mime="application/pdf",
+                key="draft_pdf_" + draft_id,
+            )
+            if IS_ADJOINT:
+                with st.form("draft_edit_form"):
+                    edited = deepcopy(draft["rows"])
+                    for row in edited:
+                        st.markdown("**" + row["Dimanche"] + "**")
+                        codes = row["codes"]
+                        for role in ("r1", "r2", "f_mon", "m_mon"):
+                            lang = ("FR" if codes[role].startswith("F") else "MO") if role in ("r1", "r2") else ("FR" if role.startswith("f_") else "MO")
+                            choices = member_codes(state, lang)
+                            codes[role] = st.selectbox(role.upper(), choices, index=choices.index(codes[role]), format_func=lambda c: state["names"].get(c, c), key="edit_" + draft_id + row["date"] + role)
+                        row["Références"] = st.text_area("Références", row.get("Références", ""), key="ref_" + draft_id + row["date"])
+                        names = state["names"]
+                        row["Lecteurs"] = "1re (" + ("FR" if codes["r1"].startswith("F") else "MO") + ") : " + names[codes["r1"]] + "\n2e (" + ("FR" if codes["r2"].startswith("F") else "MO") + ") : " + names[codes["r2"]]
+                        row["Monition + P.U."] = "FR : " + names[codes["f_mon"]] + "\nMO : " + names[codes["m_mon"]]
+                        row.pop("Annonces", None)
+                    save_d = st.form_submit_button("Enregistrer les modifications du projet")
+                if save_d:
+                    try:
+                        validate_draft(state, dict(draft, rows=edited), sundays, programmable_codes)
+                        draft["rows"] = edited
+                        draft["updated_by"] = current_adjoint_label()
+                        st.session_state.liturgie_state = state
+                        if persist(show_success=True): st.rerun()
+                    except Exception as exc: st.error(str(exc))
+            else:
+                show_mobile_program(draft["rows"])
+                confirm_d = st.checkbox("Je confirme la validation définitive", key="confirm_draft")
+                if st.button("Valider et publier", disabled=not confirm_d):
+                    try:
+                        updated = publish_draft(state, draft_id, sundays, programmable_codes, assign, normalize_state)
+                        updated.setdefault("audit_log", []).append({"type": "program_draft_published", "actor": "principal", "draft": draft_id, "timestamp": now_ouaga().isoformat()})
+                        st.session_state.liturgie_state = updated
+                        if persist(show_success=True): st.rerun()
+                    except Exception as exc: st.error(str(exc))
     if not IS_ADMIN:
         st.subheader("✨ Générer")
-        st.info("La génération et la validation d'un nouveau programme sont réservées à l'administrateur principal.")
+        st.info("La publication définitive est réservée à l'administrateur principal. Les adjoints peuvent préparer et modifier les projets ci-dessus.")
         history = state.get("history", [])
         latest = latest_history_month(history)
         if latest:
@@ -3343,6 +3474,7 @@ with generate_tab:
         else:
             st.caption("Aucun programme n'est encore publié.")
     else:
+        st.info("Programmation bilingue : samedi soir et dimanche, avec deux langues à chaque célébration.")
         st.subheader("1. Choisir la période")
         col1, col2 = st.columns(2)
         with col1:
@@ -3463,7 +3595,7 @@ with generate_tab:
                         )
                 else:
                     refs = parse_refs(refs_text, month_sundays)
-                rows, new_state = generate_month(state, year, month, refs, seed)
+                rows, new_state = generate_bilingual_weekends(state, year, month, refs, seed, sundays, normalize_state, programmable_codes, assign)
                 st.session_state.liturgie_state = new_state
                 st.session_state.last_rows = rows
                 persist(show_success=False)
@@ -3478,6 +3610,16 @@ with generate_tab:
             with st.expander("🖥️ Tableau complet"):
                 st.dataframe(display_rows, use_container_width=True, hide_index=True)
 
+            st.download_button(
+                "📝 Télécharger le programme — Word",
+                data=programme_docx_bytes(
+                    st.session_state.last_rows,
+                    title=f"Programme liturgique - {MONTHS[month - 1]} {year}",
+                    provisional=False,
+                ),
+                file_name=f"programme_liturgique_{year}_{month:02d}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
             c_csv, c_xlsx, c_pdf = st.columns(3)
             with c_csv:
                 st.download_button(

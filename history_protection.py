@@ -143,3 +143,46 @@ def cancel_latest_month_non_destructive(
         f"{label} annulé sans suppression ({marked} célébration(s) conservée(s) dans l'historique).",
         result,
     )
+
+
+def cancel_selected_celebrations_non_destructive(
+    state, selected_dates, rebuild_rotation, *, actor="Administrateur principal",
+    reason="", timestamp=None,
+):
+    """Annule exclusivement les dates explicitement sélectionnées, sans suppression.
+
+    Conserve les anciennes lignes et les autres clés de l'état, puis reconstruit
+    la rotation à partir des seules célébrations encore actives.
+    """
+    if not isinstance(state, dict) or not isinstance(state.get("history"), list):
+        return False, "Historique invalide : aucune modification.", state
+    try:
+        dates = {date.fromisoformat(str(value)).isoformat() for value in selected_dates}
+    except (ValueError, TypeError):
+        return False, "Dates invalides : aucune modification.", state
+    if not dates or not str(reason).strip():
+        return False, "Sélectionnez des dates et indiquez un motif.", state
+    result = deepcopy(state)
+    stamp = str(timestamp or datetime.now(timezone.utc).isoformat())
+    changed = 0
+    for row in result["history"]:
+        if is_history_row_active(row) and row.get("date") in dates:
+            row["history_status"] = CANCELLED_STATUS
+            row["cancelled_at"] = stamp
+            row["cancelled_by"] = str(actor)
+            row["cancel_reason"] = str(reason).strip()
+            changed += 1
+    if not changed:
+        return False, "Aucune célébration active pour les dates sélectionnées.", state
+    rebuilt = rebuild_rotation(result, active_history_rows(result["history"]))
+    if isinstance(rebuilt, dict):
+        for key in ROTATION_KEYS:
+            if key in rebuilt:
+                result[key] = deepcopy(rebuilt[key])
+    result.setdefault("audit_log", []).append({
+        "type": "history_dates_cancelled",
+        "timestamp": stamp, "actor": str(actor),
+        "dates": sorted(dates), "celebration_count": changed,
+        "reason": str(reason).strip(), "preserved": True,
+    })
+    return True, f"{changed} ligne(s) archivée(s) sans suppression.", result
