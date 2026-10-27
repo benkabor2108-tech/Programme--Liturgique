@@ -14,15 +14,14 @@ class RoleGuardRegressionTests(unittest.TestCase):
         self.assertIn('return current_role() == "adjoint"', CORE)
         self.assertIn('return current_role() in ("principal", "adjoint")', CORE)
 
-    def test_generation_is_principal_only(self):
+    def test_adjoint_can_prepare_but_only_principal_can_publish(self):
         marker = 'with generate_tab:'
-        start = CORE.index(marker)
-        section = CORE[start:start + 2500]
-        self.assertIn('if not IS_ADMIN:', section)
-        self.assertIn(
-            'La génération et la validation d\'un nouveau programme sont réservées à l\'administrateur principal.',
-            section,
-        )
+        section = CORE[CORE.index(marker):CORE.index('with members_tab:') if 'with members_tab:' in CORE[CORE.index(marker):] else len(CORE)]
+        self.assertIn('if IS_ADJOINT:', section)
+        self.assertIn('Générer un projet sans publier', section)
+        self.assertIn('store_draft(', section)
+        self.assertIn('if IS_ADMIN:', section)
+        self.assertIn('publish_draft(', section)
 
     def test_member_changes_are_principal_only(self):
         marker = 'with members_tab:'
