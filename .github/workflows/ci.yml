@@ -32,6 +32,8 @@ jobs:
           python -m py_compile liturgie_app.py
           python -m py_compile liturgie_app_core.py
           python -m py_compile program_drafts.py
+          python -m py_compile bilingual_weekends.py
+          python -m py_compile tests/test_bilingual_weekends.py
           python -m py_compile tests/test_program_drafts.py
           python -m py_compile tests/test_attendance_window.py
           python -m py_compile history_protection.py
@@ -63,6 +65,7 @@ jobs:
           python -m unittest tests/test_state_store.py -v
           python -m unittest tests/test_role_guards.py -v
           python -m unittest tests/test_program_drafts.py -v
+          python -m unittest tests/test_bilingual_weekends.py -v
           python -m unittest tests/test_attendance_window.py -v
           python -m unittest tests/test_whatsapp_automation.py -v
           python -m unittest tests/test_whatsapp_contact_readiness.py -v
