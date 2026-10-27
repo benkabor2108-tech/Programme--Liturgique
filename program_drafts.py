@@ -22,16 +22,19 @@ def store_draft(state, year, month, rows, actor):
 def validate_draft(state, draft, sundays, programmable_codes):
     year, month = int(draft["year"]), int(draft["month"])
     rows = draft.get("rows", [])
-    expected = [d.isoformat() for d in sundays(year, month)]
+    expected = [day.isoformat() for sunday in sundays(year, month) for day in (sunday - __import__("datetime").timedelta(days=1), sunday)] if any(row.get("celebration") == "Samedi soir" for row in rows) else [d.isoformat() for d in sundays(year, month)]
     if [row.get("date") for row in rows] != expected:
         raise ValueError("Les dimanches du projet ne correspondent pas au mois choisi.")
     if any(row.get("date") in set(expected) for row in state.get("history", [])):
         raise ValueError("Ce mois est déjà publié. Aucune modification n'a été enregistrée.")
+    weekend_codes = {}
     for row in rows:
+        sunday_key = row.get("liturgical_date", row["date"])
+        weekend_codes.setdefault(sunday_key, []).extend(row.get("codes", {}).values())
         codes = row.get("codes", {})
         if set(codes) != set(ROLES) or len(set(codes.values())) != len(ROLES):
             raise ValueError("Chaque dimanche doit avoir six intervenants distincts.")
-        d = date.fromisoformat(row["date"])
+        d = date.fromisoformat(row.get("liturgical_date", row["date"]))
         allowed_fr = set(programmable_codes(state, "FR", d))
         allowed_mo = set(programmable_codes(state, "MO", d))
         for role in ("f_mon", "f_ann"):
@@ -45,6 +48,9 @@ def validate_draft(state, draft, sundays, programmable_codes):
         if not ((codes["r1"] in allowed_fr and codes["r2"] in allowed_mo) or
                 (codes["r1"] in allowed_mo and codes["r2"] in allowed_fr)):
             raise ValueError(f"Les lecteurs ne respectent pas les langues le {row['date']}.")
+    for key, assigned in weekend_codes.items():
+        if len(assigned) != len(set(assigned)):
+            raise ValueError(f"Un lecteur est affecté deux fois le même week-end ({key}).")
     return True
 
 
