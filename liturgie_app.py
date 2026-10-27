@@ -848,20 +848,8 @@ def full_fresh_start(state):
         "export PDF mensuel des présences",
     )
 
-    source = _replace_once(
-        source,
-        """with generate_tab:
-    if not IS_ADMIN:
-        st.subheader("✨ Générer")
-        st.info("La génération et la validation d'un nouveau programme sont réservées à l'administrateur principal.")
-""",
-        """with generate_tab:
-    if not (IS_ADMIN or IS_ADJOINT):
-        st.subheader("✨ Générer")
-        st.info("La génération d'un nouveau programme est réservée aux administrateurs autorisés.")
-""",
-        "génération du programme accessible aux adjoints",
-    )
+    # La gestion des projets par les adjoints est déjà intégrée au cœur.
+    # Ne pas réécrire un ancien bloc absent : préserver les contrôles de validation.
 
     source = _replace_once(
         source,
