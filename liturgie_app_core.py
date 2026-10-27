@@ -25,6 +25,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from history_protection import is_history_row_active
 from program_drafts import store_draft, publish_draft, validate_draft
+from bilingual_weekends import generate_bilingual_weekends
 
 APP_VERSION = "2026.09.02-persistant-supabase-v3.9.6-correctif-cycle15"
 TABLE_NAME = "liturgie_state"
@@ -3344,7 +3345,7 @@ with attendance_tab:
 
 with generate_tab:
     if IS_ADJOINT:
-        st.subheader("📝 Préparer un programme")
+        st.subheader("📝 Préparer un programme bilingue (samedi soir et dimanche)")
         year_d = int(st.number_input("Année du projet", 2020, 2100, _now.year, key="d_year"))
         month_d = st.selectbox("Mois du projet", range(1, 13), format_func=lambda m: MONTHS[m - 1], key="d_month")
         seed_d = int(st.number_input("Graine", 0, 999999, 2026, key="d_seed"))
@@ -3354,7 +3355,7 @@ with generate_tab:
                 refs_d, errors_d = fetch_month_aelf_refs(days_d, "romain")
                 if errors_d:
                     raise ValueError(str(errors_d))
-                rows_d, _ = generate_month(deepcopy(state), year_d, month_d, refs_d, seed_d)
+                rows_d, _ = generate_bilingual_weekends(state, year_d, month_d, refs_d, seed_d, sundays, normalize_state, programmable_codes, assign)
                 store_draft(state, year_d, month_d, rows_d, current_adjoint_label())
                 st.session_state.liturgie_state = state
                 if persist(show_success=True):
@@ -3418,6 +3419,7 @@ with generate_tab:
         else:
             st.caption("Aucun programme n'est encore publié.")
     else:
+        st.info("Programmation bilingue : samedi soir et dimanche, avec deux langues à chaque célébration.")
         st.subheader("1. Choisir la période")
         col1, col2 = st.columns(2)
         with col1:
@@ -3538,7 +3540,7 @@ with generate_tab:
                         )
                 else:
                     refs = parse_refs(refs_text, month_sundays)
-                rows, new_state = generate_month(state, year, month, refs, seed)
+                rows, new_state = generate_bilingual_weekends(state, year, month, refs, seed, sundays, normalize_state, programmable_codes, assign)
                 st.session_state.liturgie_state = new_state
                 st.session_state.last_rows = rows
                 persist(show_success=False)
