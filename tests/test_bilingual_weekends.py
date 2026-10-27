@@ -13,6 +13,25 @@ class WeekendTests(unittest.TestCase):
         self.assertEqual(days[0].isoformat(), "2026-10-31")
         self.assertEqual(days[-1].isoformat(), "2026-11-29")
 
+    def test_existing_trial_history_is_not_overwritten_or_silently_published(self):
+        fr = [f"F{i}" for i in range(1, 5)]
+        mo = [f"M{i}" for i in range(1, 5)]
+        people = {c: {"next_role": None, "reading_count": 0,
+                      "monition_count": 0, "last_service": None} for c in fr + mo}
+        old = {"date": "2026-11-01", "status": "En essai", "codes": {"r1": "F1"}}
+        state = {"history": [deepcopy(old)], "people": people,
+                 "names": {c: c for c in people}, "next_first_language": "FR",
+                 "reading_pairs": [], "monition_pairs": []}
+        sundays = lambda y, m: [date(2026, 11, 1)]
+        refs = {"2026-11-01": {"r1": "A", "r2": "B", "ev": "C"}}
+        with self.assertRaisesRegex(ValueError, "déjà publiée"):
+            generate_bilingual_weekends(
+                state, 2026, 11, refs, 2026, sundays, deepcopy,
+                lambda s, lang, d: fr if lang == "FR" else mo,
+                lambda s, code, role, day: None,
+            )
+        self.assertEqual(state["history"], [old])
+
     def test_no_duplicate_per_weekend_and_no_publication(self):
         fr = [f"F{i}" for i in range(1, 11)]
         mo = [f"M{i}" for i in range(1, 9)]
