@@ -30,7 +30,7 @@ TABLE_NAME = "liturgie_state"
 APP_PUBLIC_URL = "https://programme--liturgique-e39juey35cfq23az2qvup5.streamlit.app/"
 AELF_API_BASE = "https://api.aelf.org/v1"
 APP_TIMEZONE = ZoneInfo("Africa/Ouagadougou")
-ATTENDANCE_OPEN_TIME = time(18, 30)
+ATTENDANCE_OPEN_TIME = time(0, 0)
 ATTENDANCE_CLOSE_TIME = time(23, 59, 59)
 ATTENDANCE_MIN_COUNT = 2
 ATTENDANCE_MAX_J = 2  # 3 J ou plus = non éligible pour le mois programmé.
@@ -973,9 +973,17 @@ def latest_saturday(day):
     return day - timedelta(days=days_back)
 
 
+def attendance_saturday_for_date(day):
+    """Samedi associé à la fenêtre vendredi 00:00 → lundi 23:59:59."""
+    if day.weekday() == 4:
+        return day + timedelta(days=1)
+    return latest_saturday(day)
+
+
 def attendance_window(saturday):
-    start = datetime.combine(saturday, ATTENDANCE_OPEN_TIME, tzinfo=APP_TIMEZONE)
-    close_day = saturday + timedelta(days=1)
+    start_day = saturday - timedelta(days=1)
+    close_day = saturday + timedelta(days=2)
+    start = datetime.combine(start_day, ATTENDANCE_OPEN_TIME, tzinfo=APP_TIMEZONE)
     end = datetime.combine(close_day, ATTENDANCE_CLOSE_TIME, tzinfo=APP_TIMEZONE)
     return start, end
 
@@ -1075,6 +1083,12 @@ def attendance_actor_label(role):
 
 
 def save_attendance_sheet(state, saturday, statuses, actor_role, reason=""):
+    # Vérifier les droits à l'enregistrement, indépendamment de l'interface.
+    if actor_role != "principal":
+        if actor_role != "adjoint" or not attendance_is_open(saturday):
+            return False, "La période de saisie est fermée pour les administrateurs adjoints."
+    if actor_role == "principal" and not attendance_is_open(saturday) and not str(reason).strip():
+        return False, "Un motif est obligatoire pour corriger une feuille hors période."
     sheet, _ = ensure_attendance_sheet(state, saturday, actor=attendance_actor_label(actor_role))
     clean = {}
     for code in sheet.get("members", []):
@@ -2684,9 +2698,9 @@ IS_ADMIN = principal_mode()
 IS_ADJOINT = adjoint_mode()
 CAN_EDIT_ATTENDANCE = staff_mode()
 
-# Création automatique de la feuille pendant la fenêtre samedi 18 h 30 → dimanche 23 h 59.
+# Création automatique de la feuille pendant la fenêtre vendredi 00 h 00 → lundi 23 h 59.
 _now = now_ouaga()
-_current_saturday = latest_saturday(_now.date())
+_current_saturday = attendance_saturday_for_date(_now.date())
 _current_attendance_open = attendance_is_open(_current_saturday, _now)
 if CAN_EDIT_ATTENDANCE and _current_attendance_open and not attendance_is_ignored(state, _current_saturday):
     _sheet, _created = ensure_attendance_sheet(state, _current_saturday, actor=attendance_actor_label(current_role()))
@@ -2713,7 +2727,7 @@ if CAN_EDIT_ATTENDANCE and _current_attendance_open and not attendance_is_ignore
         @st.dialog("📋 Feuille de présence ouverte")
         def _attendance_notice():
             st.success(f"Feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} ouverte.")
-            st.write("Renseignez P, J ou A dans l'onglet **📋 Présences**. La feuille sera verrouillée dimanche à 23 h 59.")
+            st.write("Renseignez P, J ou A dans l'onglet **📋 Présences**. La saisie des adjoints sera verrouillée lundi à 23 h 59.")
             st.caption("P = présent · J = absence justifiée comptée comme présence · A = absence non justifiée.")
         _attendance_notice()
         st.session_state[_notice_key] = True
@@ -3092,7 +3106,7 @@ with attendance_tab:
             f"0️⃣ Présences remises à zéro pour le samedi {_current_saturday.strftime('%d/%m/%Y')}. "
             "Cette feuille ne compte plus dans le bilan du mois."
         )
-        if IS_ADMIN and _current_attendance_open:
+        if IS_ADMIN:
             if st.button("↩️ Réactiver cette feuille", key=f"restore_attendance_{attendance_key}"):
                 restore_attendance_sheet(state, _current_saturday, "principal")
                 st.session_state.liturgie_state = state
@@ -3102,13 +3116,13 @@ with attendance_tab:
     elif _current_attendance_open:
         st.success(
             f"🟢 Feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} ouverte "
-            "jusqu'au dimanche 23 h 59."
+            "jusqu'au lundi 23 h 59."
         )
         if current_sheet:
             if CAN_EDIT_ATTENDANCE:
                 st.info(
                     "Vous pouvez renseigner ou corriger cette feuille tant que la fenêtre est ouverte. "
-                    "Après dimanche 23 h 59, seul l'administrateur principal pourra la corriger."
+                    "Après lundi 23 h 59, seul l'administrateur principal pourra la corriger."
                 )
                 with st.form(f"attendance_current_{attendance_key}"):
                     current_statuses = {}
@@ -3153,10 +3167,10 @@ with attendance_tab:
         elif not CAN_EDIT_ATTENDANCE:
             st.info("La feuille sera créée automatiquement lorsqu'un administrateur ouvrira l'application pendant la fenêtre de saisie.")
     else:
-        if _now < open_start and _now.date() == _current_saturday:
+        if _now < open_start:
             st.info(
                 f"⏳ La feuille du samedi {_current_saturday.strftime('%d/%m/%Y')} "
-                "s'ouvrira automatiquement à 18 h 30."
+                "s'ouvrira automatiquement vendredi à 00 h 00."
             )
         else:
             st.info(
