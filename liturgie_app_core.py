@@ -24,6 +24,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from history_protection import is_history_row_active
+from program_drafts import store_draft, publish_draft, validate_draft
 
 APP_VERSION = "2026.09.02-persistant-supabase-v3.9.6-correctif-cycle15"
 TABLE_NAME = "liturgie_state"
@@ -136,6 +137,7 @@ def initial_state():
         "monition_pairs": [],
         "next_first_language": "FR",
         "history": [],
+        "program_drafts": {},
         "attendance": {},
         "attendance_ignored": [],
         "auth_security": {},
@@ -190,6 +192,7 @@ def normalize_state(raw):
         "monition_pairs": [],
         "next_first_language": "FR",
         "history": [],
+        "program_drafts": {},
         "attendance": {},
         "attendance_ignored": [],
         "auth_security": {},
@@ -231,7 +234,7 @@ def normalize_state(raw):
             requested = highest + 1
         state["next_member_number"][lang] = max(highest + 1, requested)
 
-    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:
+    for key in ["reading_cycle_seen", "reading_pairs", "monition_pairs", "next_first_language", "history", "program_drafts", "attendance", "attendance_ignored", "auth_security", "whatsapp_send_log", "audit_log"]:
         if key in raw:
             state[key] = deepcopy(raw[key])
 
@@ -3340,9 +3343,67 @@ with attendance_tab:
 
 
 with generate_tab:
+    if IS_ADJOINT:
+        st.subheader("📝 Préparer un programme")
+        year_d = int(st.number_input("Année du projet", 2020, 2100, _now.year, key="d_year"))
+        month_d = st.selectbox("Mois du projet", range(1, 13), format_func=lambda m: MONTHS[m - 1], key="d_month")
+        seed_d = int(st.number_input("Graine", 0, 999999, 2026, key="d_seed"))
+        if st.button("Générer un projet sans publier"):
+            try:
+                days_d = sundays(year_d, month_d)
+                refs_d, errors_d = fetch_month_aelf_refs(days_d, "romain")
+                if errors_d:
+                    raise ValueError(str(errors_d))
+                rows_d, _ = generate_month(deepcopy(state), year_d, month_d, refs_d, seed_d)
+                store_draft(state, year_d, month_d, rows_d, current_adjoint_label())
+                st.session_state.liturgie_state = state
+                if persist(show_success=True):
+                    st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+    if IS_ADMIN or IS_ADJOINT:
+        drafts = state.get("program_drafts", {})
+        if drafts:
+            st.subheader("📁 Projets de programmes")
+            draft_id = st.selectbox("Projet", sorted(drafts), key="draft_selection")
+            draft = drafts[draft_id]
+            if IS_ADJOINT:
+                with st.form("draft_edit_form"):
+                    edited = deepcopy(draft["rows"])
+                    for row in edited:
+                        st.markdown("**" + row["Dimanche"] + "**")
+                        codes = row["codes"]
+                        for role in ("r1", "r2", "f_mon", "m_mon", "f_ann", "m_ann"):
+                            lang = ("FR" if codes[role].startswith("F") else "MO") if role in ("r1", "r2") else ("FR" if role.startswith("f_") else "MO")
+                            choices = member_codes(state, lang)
+                            codes[role] = st.selectbox(role.upper(), choices, index=choices.index(codes[role]), format_func=lambda c: state["names"].get(c, c), key="edit_" + draft_id + row["date"] + role)
+                        row["Références"] = st.text_area("Références", row.get("Références", ""), key="ref_" + draft_id + row["date"])
+                        names = state["names"]
+                        row["Lecteurs"] = "1re (" + ("FR" if codes["r1"].startswith("F") else "MO") + ") : " + names[codes["r1"]] + "\n2e (" + ("FR" if codes["r2"].startswith("F") else "MO") + ") : " + names[codes["r2"]]
+                        row["Monition + P.U."] = "FR : " + names[codes["f_mon"]] + "\nMO : " + names[codes["m_mon"]]
+                        row["Annonces"] = "FR : " + names[codes["f_ann"]] + "\nMO : " + names[codes["m_ann"]]
+                    save_d = st.form_submit_button("Enregistrer les modifications du projet")
+                if save_d:
+                    try:
+                        validate_draft(state, dict(draft, rows=edited), sundays, programmable_codes)
+                        draft["rows"] = edited
+                        draft["updated_by"] = current_adjoint_label()
+                        st.session_state.liturgie_state = state
+                        if persist(show_success=True): st.rerun()
+                    except Exception as exc: st.error(str(exc))
+            else:
+                show_mobile_program(draft["rows"])
+                confirm_d = st.checkbox("Je confirme la validation définitive", key="confirm_draft")
+                if st.button("Valider et publier", disabled=not confirm_d):
+                    try:
+                        updated = publish_draft(state, draft_id, sundays, programmable_codes, assign, normalize_state)
+                        updated.setdefault("audit_log", []).append({"type": "program_draft_published", "actor": "principal", "draft": draft_id, "timestamp": now_ouaga().isoformat()})
+                        st.session_state.liturgie_state = updated
+                        if persist(show_success=True): st.rerun()
+                    except Exception as exc: st.error(str(exc))
     if not IS_ADMIN:
         st.subheader("✨ Générer")
-        st.info("La génération et la validation d'un nouveau programme sont réservées à l'administrateur principal.")
+        st.info("La publication définitive est réservée à l'administrateur principal. Les adjoints peuvent préparer et modifier les projets ci-dessus.")
         history = state.get("history", [])
         latest = latest_history_month(history)
         if latest:
