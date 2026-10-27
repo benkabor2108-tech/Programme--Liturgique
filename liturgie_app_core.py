@@ -26,6 +26,7 @@ from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, 
 from history_protection import is_history_row_active
 from program_drafts import store_draft, publish_draft, validate_draft
 from bilingual_weekends import generate_bilingual_weekends
+from programme_word import programme_docx_bytes
 
 APP_VERSION = "2026.09.02-persistant-supabase-v3.9.6-correctif-cycle15"
 TABLE_NAME = "liturgie_state"
@@ -3368,6 +3369,22 @@ with generate_tab:
             st.subheader("📁 Projets de programmes")
             draft_id = st.selectbox("Projet", sorted(drafts), key="draft_selection")
             draft = drafts[draft_id]
+            st.download_button(
+                "📝 Télécharger le projet — Word",
+                data=programme_docx_bytes(
+                    draft["rows"], title=f"Projet liturgique {draft_id}", provisional=True
+                ),
+                file_name=f"projet_liturgique_{draft_id}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="draft_word_" + draft_id,
+            )
+            st.download_button(
+                "📄 Télécharger le projet — PDF",
+                data=pdf_bytes(draft["rows"], title=f"PROJET NON VALIDÉ — {draft_id}"),
+                file_name=f"projet_liturgique_{draft_id}.pdf",
+                mime="application/pdf",
+                key="draft_pdf_" + draft_id,
+            )
             if IS_ADJOINT:
                 with st.form("draft_edit_form"):
                     edited = deepcopy(draft["rows"])
@@ -3555,6 +3572,16 @@ with generate_tab:
             with st.expander("🖥️ Tableau complet"):
                 st.dataframe(display_rows, use_container_width=True, hide_index=True)
 
+            st.download_button(
+                "📝 Télécharger le programme — Word",
+                data=programme_docx_bytes(
+                    st.session_state.last_rows,
+                    title=f"Programme liturgique - {MONTHS[month - 1]} {year}",
+                    provisional=False,
+                ),
+                file_name=f"programme_liturgique_{year}_{month:02d}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
             c_csv, c_xlsx, c_pdf = st.columns(3)
             with c_csv:
                 st.download_button(
