@@ -162,7 +162,7 @@ def _runtime_core_source():
     source = _replace_once(
         source,
         '            st.info("📖 Les références des dimanches seront récupérées automatiquement depuis l\'API AELF au moment de la génération. Aucun copier-coller n\'est nécessaire.")\n',
-        '            st.info("📖 Le samedi soir est traité comme messe anticipée : mêmes références bibliques que le dimanche qui suit, y compris si ce dimanche est dans le mois suivant. Les 3 intervenants du samedi sont tous mooréphones : 1re lecture, 2e lecture, puis une même personne pour Monition/P.U. + Annonces.")\n',
+        '            st.info("📖 Le samedi soir est traité comme messe anticipée : mêmes références bibliques que le dimanche qui suit, y compris si ce dimanche est dans le mois suivant. Chaque célébration du samedi soir et du dimanche prévoit quatre intervenants : deux lectures en langues opposées (français et mooré), une monition et prière universelle en français, une monition et prière universelle en mooré. Aucune annonce n’est programmée.")\n',
         "texte AELF week-end",
     )
     source = _replace_once(
@@ -903,10 +903,6 @@ def full_fresh_start(state):
         '            f_ann = choose_announcement(state, "FR", sunday, excluded, rng)\n            m_ann = choose_announcement(state, "MO", sunday, excluded, rng)\n',
         '',
         "aucune sélection pour les annonces",
-    )
-    source = source.replace(
-        "Les 3 intervenants du samedi sont tous mooréphones : 1re lecture, 2e lecture, puis une même personne pour Monition/P.U. + Annonces.",
-        "Les 3 intervenants du samedi sont tous mooréphones : 1re lecture, 2e lecture et Monition/P.U.",
     )
     source = source.replace(
         '    if codes.get("f_ann") == code or codes.get("m_ann") == code:\n        return f"Annonces — {lang}"\n',
