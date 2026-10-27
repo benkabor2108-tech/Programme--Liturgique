@@ -23,7 +23,20 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from history_protection import is_history_row_active, cancel_selected_celebrations_non_destructive
+from history_protection import is_history_row_active
+import history_protection as _history_protection
+
+def cancel_selected_celebrations_non_destructive(*args, **kwargs):
+    """Compatibilité avec les instances Streamlit ayant un ancien module en cache."""
+    implementation = getattr(
+        _history_protection, "cancel_selected_celebrations_non_destructive", None
+    )
+    if implementation is None:
+        return False, (
+            "La protection de l'historique doit être rechargée. "
+            "Redémarrez l'application depuis Streamlit Cloud."
+        ), args[0] if args else None
+    return implementation(*args, **kwargs)
 from program_drafts import store_draft, publish_draft, validate_draft
 from bilingual_weekends import generate_bilingual_weekends
 from programme_word import programme_docx_bytes
