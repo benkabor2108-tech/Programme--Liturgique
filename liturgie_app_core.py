@@ -3374,7 +3374,7 @@ with generate_tab:
                     for row in edited:
                         st.markdown("**" + row["Dimanche"] + "**")
                         codes = row["codes"]
-                        for role in ("r1", "r2", "f_mon", "m_mon", "f_ann", "m_ann"):
+                        for role in ("r1", "r2", "f_mon", "m_mon"):
                             lang = ("FR" if codes[role].startswith("F") else "MO") if role in ("r1", "r2") else ("FR" if role.startswith("f_") else "MO")
                             choices = member_codes(state, lang)
                             codes[role] = st.selectbox(role.upper(), choices, index=choices.index(codes[role]), format_func=lambda c: state["names"].get(c, c), key="edit_" + draft_id + row["date"] + role)
@@ -3382,7 +3382,7 @@ with generate_tab:
                         names = state["names"]
                         row["Lecteurs"] = "1re (" + ("FR" if codes["r1"].startswith("F") else "MO") + ") : " + names[codes["r1"]] + "\n2e (" + ("FR" if codes["r2"].startswith("F") else "MO") + ") : " + names[codes["r2"]]
                         row["Monition + P.U."] = "FR : " + names[codes["f_mon"]] + "\nMO : " + names[codes["m_mon"]]
-                        row["Annonces"] = "FR : " + names[codes["f_ann"]] + "\nMO : " + names[codes["m_ann"]]
+                        row.pop("Annonces", None)
                     save_d = st.form_submit_button("Enregistrer les modifications du projet")
                 if save_d:
                     try:
