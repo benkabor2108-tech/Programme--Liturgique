@@ -3,7 +3,8 @@ from copy import deepcopy
 from datetime import date
 
 
-ROLES = ("r1", "r2", "f_mon", "m_mon", "f_ann", "m_ann")
+ROLES = ("r1", "r2", "f_mon", "m_mon")
+LEGACY_ROLES = ROLES + ("f_ann", "m_ann")
 
 
 def draft_key(year, month):
@@ -32,15 +33,15 @@ def validate_draft(state, draft, sundays, programmable_codes):
         sunday_key = row.get("liturgical_date", row["date"])
         weekend_codes.setdefault(sunday_key, []).extend(row.get("codes", {}).values())
         codes = row.get("codes", {})
-        if set(codes) != set(ROLES) or len(set(codes.values())) != len(ROLES):
-            raise ValueError("Chaque dimanche doit avoir six intervenants distincts.")
+        if set(codes) not in (set(ROLES), set(LEGACY_ROLES)) or len(set(codes.values())) != len(codes):
+            raise ValueError("Chaque célébration doit avoir ses intervenants distincts.")
         d = date.fromisoformat(row.get("liturgical_date", row["date"]))
         allowed_fr = set(programmable_codes(state, "FR", d))
         allowed_mo = set(programmable_codes(state, "MO", d))
-        for role in ("f_mon", "f_ann"):
+        for role in ("f_mon",):
             if codes[role] not in allowed_fr:
                 raise ValueError(f"Intervenant francophone non éligible le {row['date']}.")
-        for role in ("m_mon", "m_ann"):
+        for role in ("m_mon",):
             if codes[role] not in allowed_mo:
                 raise ValueError(f"Intervenant mooréphone non éligible le {row['date']}.")
         if {codes["r1"], codes["r2"]}.intersection(allowed_fr) == set() or {codes["r1"], codes["r2"]}.intersection(allowed_mo) == set():
@@ -68,7 +69,8 @@ def publish_draft(state, key, sundays, programmable_codes, assign, normalize_sta
         for role in ("f_mon", "m_mon"):
             assign(updated, codes[role], "MONITION", d)
         for role in ("f_ann", "m_ann"):
-            assign(updated, codes[role], "ANNONCE", d)
+            if role in codes:
+                assign(updated, codes[role], "ANNONCE", d)
         updated.setdefault("reading_pairs", []).append([codes["r1"], codes["r2"]])
         updated.setdefault("monition_pairs", []).append([codes["f_mon"], codes["m_mon"]])
         first_lang = "FR" if codes["r1"].startswith("F") else "MO"
