@@ -74,6 +74,53 @@ class WeekendTests(unittest.TestCase):
             lambda s, lang, d: fr if lang == "FR" else mo,
         ))
 
+    def test_archived_november_rotation_dry_run_twenty_eligible(self):
+        # Reproduit la structure de la sauvegarde : 105 lignes historiques,
+        # dont les dix anciennes célébrations désormais archivées en mémoire.
+        fr = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F12"]
+        mo = [f"M{i}" for i in range(1, 11)]
+        codes = fr + mo
+        history = [{"date": "2026-09-01", "history_status": "cancelled"}
+                   for _ in range(95)]
+        sundays = lambda y, m: [date(2026, 11, d) for d in (1, 8, 15, 22, 29)]
+        days = weekend_dates(sundays, 2026, 11)
+        history += [{"date": d.isoformat(), "history_status": "cancelled"}
+                    for d in days]
+        state = {
+            "history": history,
+            "people": {c: {"next_role": None, "reading_count": 0,
+                           "monition_count": 0, "last_service": None} for c in codes},
+            "names": {c: c for c in codes}, "next_first_language": "FR",
+            "reading_pairs": [], "monition_pairs": [],
+            "attendance": {"2026-10-03": {"statuses": {c: "P" for c in codes}}},
+            "auth_security": {"test_marker": "unchanged"},
+        }
+        original = deepcopy(state)
+        def assign(s, code, role, day):
+            p = s["people"][code]
+            p["next_role"] = "MONITION" if role == "LECTURE" else "LECTURE"
+            p["last_service"] = day.isoformat()
+            p["reading_count" if role == "LECTURE" else "monition_count"] += 1
+        refs = {d.isoformat(): {"r1": "A", "r2": "B", "ev": "C"}
+                for d in sundays(2026, 11)}
+        rows, simulated = generate_bilingual_weekends(
+            state, 2026, 11, refs, 2026, sundays, deepcopy,
+            lambda s, lang, day: fr if lang == "FR" else mo, assign,
+        )
+        self.assertEqual(state, original)
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(simulated["history"]), 115)
+        self.assertEqual(sum(x.get("history_status") == "cancelled"
+                             for x in simulated["history"]), 105)
+        self.assertEqual(simulated["attendance"], original["attendance"])
+        self.assertEqual(simulated["auth_security"], original["auth_security"])
+        self.assertEqual(sum(p["reading_count"] for p in simulated["people"].values()), 20)
+        self.assertEqual(sum(p["monition_count"] for p in simulated["people"].values()), 20)
+        for i in range(0, 10, 2):
+            both = list(rows[i]["codes"].values()) + list(rows[i+1]["codes"].values())
+            self.assertEqual(len(both), len(set(both)))
+        self.assertTrue(validate_bilingual_rows(rows))
+
     def test_no_duplicate_per_weekend_and_no_publication(self):
         fr = [f"F{i}" for i in range(1, 11)]
         mo = [f"M{i}" for i in range(1, 9)]
