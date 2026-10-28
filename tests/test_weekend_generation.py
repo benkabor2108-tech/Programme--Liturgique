@@ -89,7 +89,7 @@ class WeekendGenerationTests(unittest.TestCase):
         self.assertIn("reference_days = liturgical_reference_days(month_sundays)", wrapper)
         self.assertIn("generate_bilingual_weekends(", wrapper)
         self.assertIn("_sunday_refs", wrapper)
-        self.assertNotIn("r1_lang = r2_lang = \\"MO\\"", wrapper)
+        self.assertNotIn('r1_lang = r2_lang = "MO"', wrapper)
         self.assertNotIn("Les 3 intervenants du samedi", wrapper)
         # Le cœur historique reste inchangé; la correction passe par la couche protégée.
         self.assertIn("def sundays(year, month):", core)
