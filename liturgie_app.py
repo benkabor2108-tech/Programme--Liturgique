@@ -746,42 +746,7 @@ def full_fresh_start(state):
     # Nouvelle règle : aucun poste « Annonces » dans les nouvelles programmations.
     # Les historiques restent intacts et les anciens chargés d'annonces sont
     # disponibles pour les autres fonctions suivant la rotation.
-    source = _replace_once(
-        source,
-        '            assign(state, m_mon, "ANNONCE", sunday)\n',
-        '',
-        "suppression annonces du samedi",
-    )
-    source = _replace_once(
-        source,
-        '            assign(state, f_ann, "ANNONCE", sunday)\n            assign(state, m_ann, "ANNONCE", sunday)\n',
-        '',
-        "suppression annonces du dimanche",
-    )
-    source = _replace_once(
-        source,
-        '            "Annonces": (f"MO : {names[m_mon]}" if is_saturday else f"FR : {names[f_ann]}\\nMO : {names[m_ann]}"),\n',
-        '',
-        "suppression de la colonne annonces générée",
-    )
-    source = _replace_once(
-        source,
-        '                    "m_ann": m_mon,\n',
-        '',
-        "suppression code annonces samedi",
-    )
-    source = _replace_once(
-        source,
-        '                    "f_ann": f_ann, "m_ann": m_ann,\n',
-        '',
-        "suppression codes annonces dimanche",
-    )
-    source = _replace_once(
-        source,
-        '            f_ann = choose_announcement(state, "FR", sunday, excluded, rng)\n            m_ann = choose_announcement(state, "MO", sunday, excluded, rng)\n',
-        '',
-        "aucune sélection pour les annonces",
-    )
+    # Le moteur bilingue strict ne génère aucun poste d'annonces.
     source = source.replace(
         '    if codes.get("f_ann") == code or codes.get("m_ann") == code:\n        return f"Annonces — {lang}"\n',
         '',
