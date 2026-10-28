@@ -1,11 +1,24 @@
 import unittest
 from copy import deepcopy
 from datetime import date
-from bilingual_weekends import weekend_dates, generate_bilingual_weekends
+from bilingual_weekends import weekend_dates, generate_bilingual_weekends, validate_bilingual_rows
 from program_drafts import store_draft, validate_draft
 
 
 class WeekendTests(unittest.TestCase):
+    def test_rejects_legacy_saturday_missing_french_monition(self):
+        legacy = {"date": "2026-10-31", "codes": {"r1": "M1", "r2": "M2", "m_mon": "M3"},
+                  "Monition + P.U.": "MO : Mme ZOUNGRANA"}
+        with self.assertRaises(ValueError):
+            validate_bilingual_rows([legacy])
+
+    def test_rejects_same_language_readings_and_missing_french_monition(self):
+        row = {"date": "2026-11-07",
+               "codes": {"r1": "M1", "r2": "M2", "f_mon": "F1", "m_mon": "M3"},
+               "Monition + P.U.": "FR : Mme NACOULMA\\nMO : Mlle GLADYS"}
+        with self.assertRaisesRegex(ValueError, "Langues"):
+            validate_bilingual_rows([row])
+
     def test_november_dates(self):
         sundays = lambda y, m: [date(2026, 11, d) for d in (1, 8, 15, 22, 29)]
         days = weekend_dates(sundays, 2026, 11)
