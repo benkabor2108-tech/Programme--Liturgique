@@ -1865,6 +1865,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     for group_index, month_rows in enumerate(groups):
         month_title = pdf_month_title(month_rows, title)
         story.append(Paragraph(escape(month_title), title_style))
+        story.append(Paragraph("<i>« Ta parole est la lampe de mes pas, la lumière de ma route » (Ps 119, 105)</i>", note_style))
         source_text = "Références bibliques : AELF" if any(str(r.get("Source références", "")).startswith("AELF") for r in month_rows) else "Références bibliques : programme enregistré"
         story.append(Paragraph(escape(source_text), note_style))
 
@@ -1881,12 +1882,12 @@ def pdf_bytes(rows, title="Programme liturgique"):
                 f"<b>Év. :</b> {escape(item['Évangile'] or '-')}"
             )
             readers = (
-                f"<b>1re :</b> {escape(item['Lecteur 1'] or '-')}<br/>"
-                f"<b>2e :</b> {escape(item['Lecteur 2'] or '-')}"
+                f"<font backColor="#1675A7" color="white"><b> 1re </b></font> {escape(item['Lecteur 1'] or '-')}<br/>"
+                f"<font backColor="#299C73" color="white"><b> 2e </b></font> {escape(item['Lecteur 2'] or '-')}"
             )
             monitions = (
-                f"<b>FR :</b> {escape(item['Monition/P.U. FR'] or '-')}<br/>"
-                f"<b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
+                f"<font backColor="#DCEEF9" color="#154D79"><b> FR </b></font> {escape(item['Monition/P.U. FR'] or '-')}<br/>"
+                f"<font backColor="#E1F3E9" color="#216D4F"><b> MO </b></font> {escape(item['Monition/P.U. MO'] or '-')}"
             )
             annonces = (
                 f"<b>FR :</b> {escape(item['Annonces FR'] or '-')}<br/>"
@@ -1912,9 +1913,9 @@ def pdf_bytes(rows, title="Programme liturgique"):
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#EAF3FA")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#FFFDF4"), colors.HexColor("#EAF3FA")]),
         ]))
         story.append(table)
         if group_index < len(groups) - 1:
