@@ -1880,12 +1880,12 @@ def pdf_bytes(rows, title="Programme liturgique"):
                 f"<b>Év. :</b> {escape(item['Évangile'] or '-')}"
             )
             readers = (
-                f"<font backColor="#1675A7" color="white"><b> 1re </b></font> {escape(item['Lecteur 1'] or '-')}<br/>"
-                f"<font backColor="#299C73" color="white"><b> 2e </b></font> {escape(item['Lecteur 2'] or '-')}"
+                f"<font backColor='#1675A7' color='white'><b> 1re </b></font> {escape(item['Lecteur 1'] or '-')}<br/>"
+                f"<font backColor='#299C73' color='white'><b> 2e </b></font> {escape(item['Lecteur 2'] or '-')}"
             )
             monitions = (
-                f"<font backColor="#DCEEF9" color="#154D79"><b> FR </b></font> {escape(item['Monition/P.U. FR'] or '-')}<br/>"
-                f"<font backColor="#E1F3E9" color="#216D4F"><b> MO </b></font> {escape(item['Monition/P.U. MO'] or '-')}"
+                f"<font backColor='#DCEEF9' color='#154D79'><b> FR </b></font> {escape(item['Monition/P.U. FR'] or '-')}<br/>"
+                f"<font backColor='#E1F3E9' color='#216D4F'><b> MO </b></font> {escape(item['Monition/P.U. MO'] or '-')}"
             )
             annonces = (
                 f"<b>FR :</b> {escape(item['Annonces FR'] or '-')}<br/>"
