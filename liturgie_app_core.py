@@ -1928,48 +1928,99 @@ def pdf_bytes(rows, title="Programme liturgique"):
 
 
     def illustrated_header(canvas, document):
+        """Bandeau illustré dynamique, sans date ni image de mois figée."""
         canvas.saveState()
         w, h = landscape(A4)
+        left, right = 8 * mm, w - 8 * mm
+        top, bottom = h - 5 * mm, h - 32 * mm
         navy = colors.HexColor("#164A73")
-        canvas.setFillColor(colors.HexColor("#EAF4FB"))
-        canvas.rect(8 * mm, h - 32 * mm, w - 16 * mm, 27 * mm, stroke=0, fill=1)
-        canvas.setStrokeColor(colors.HexColor("#89B1CF"))
-        canvas.line(8 * mm, h - 32 * mm, w - 8 * mm, h - 32 * mm)
-        # Bible ouverte et croix.
-        x, y = 13 * mm, h - 27 * mm
+        # Dégradé clair du bandeau, fidèle à la palette du modèle.
+        bands = 48
+        for i in range(bands):
+            fraction = i / float(bands - 1)
+            tone = 0.93 + 0.065 * fraction
+            canvas.setFillColor(colors.Color(tone * 0.96, tone * 0.985, min(1, tone * 1.02)))
+            canvas.rect(left, bottom + (top - bottom) * i / bands,
+                        right - left, (top - bottom) / bands + 0.3, fill=1, stroke=0)
+        # Vagues décoratives bleues au pied du bandeau.
+        for offset, color, thickness in (
+            (0, colors.HexColor("#73B7DC"), 2.2),
+            (2.5, colors.HexColor("#B1D8ED"), 1.5),
+        ):
+            wave = canvas.beginPath()
+            wave.moveTo(left, bottom + offset * mm)
+            wave.curveTo(w * .27, bottom + (offset - 1) * mm,
+                         w * .43, bottom + (offset + 5) * mm,
+                         w * .62, bottom + (offset + 2) * mm)
+            wave.curveTo(w * .79, bottom + (offset - 1) * mm,
+                         w * .90, bottom + (offset + 2) * mm,
+                         right, bottom + offset * mm)
+            canvas.setStrokeColor(color)
+            canvas.setLineWidth(thickness)
+            canvas.drawPath(wave, stroke=1, fill=0)
+        canvas.setStrokeColor(colors.HexColor("#3C83B2"))
+        canvas.setLineWidth(.5)
+        canvas.rect(left, bottom, right - left, top - bottom, fill=0, stroke=1)
+
+        # Bible ouverte avec pages, reliure et croix dorée.
+        x, y = 14 * mm, h - 27 * mm
+        canvas.setFillColor(colors.HexColor("#C6D7E6"))
+        canvas.ellipse(x - 3 * mm, y - 1 * mm, x + 34 * mm, y + 22 * mm, fill=1, stroke=0)
         book = canvas.beginPath()
         book.moveTo(x, y + 2 * mm)
-        book.curveTo(x + 7 * mm, y + 6 * mm, x + 10 * mm, y + 5 * mm, x + 15 * mm, y + 2 * mm)
-        book.curveTo(x + 20 * mm, y + 5 * mm, x + 24 * mm, y + 6 * mm, x + 30 * mm, y + 2 * mm)
+        book.curveTo(x + 6 * mm, y + 7 * mm, x + 11 * mm, y + 6 * mm, x + 15 * mm, y + 2 * mm)
+        book.curveTo(x + 21 * mm, y + 6 * mm, x + 25 * mm, y + 7 * mm, x + 30 * mm, y + 2 * mm)
         book.lineTo(x + 30 * mm, y)
         book.curveTo(x + 22 * mm, y + 2 * mm, x + 19 * mm, y + 1 * mm, x + 15 * mm, y)
         book.curveTo(x + 10 * mm, y + 1 * mm, x + 7 * mm, y + 2 * mm, x, y)
         book.close()
-        canvas.setFillColor(colors.HexColor("#FFF8E9"))
-        canvas.setStrokeColor(colors.HexColor("#C99B52"))
+        canvas.setFillColor(colors.HexColor("#FFF9E9"))
+        canvas.setStrokeColor(colors.HexColor("#C6A56B"))
+        canvas.setLineWidth(.8)
         canvas.drawPath(book, fill=1, stroke=1)
-        canvas.setLineWidth(2.5)
-        canvas.line(x + 15 * mm, y + 4 * mm, x + 15 * mm, y + 21 * mm)
-        canvas.line(x + 9 * mm, y + 15 * mm, x + 21 * mm, y + 15 * mm)
-        # Colombe stylisée, à droite.
-        x, y = w - 28 * mm, h - 20 * mm
-        bird = canvas.beginPath()
-        bird.moveTo(x - 12 * mm, y)
-        bird.curveTo(x - 4 * mm, y - 2 * mm, x - 4 * mm, y + 7 * mm, x + 2 * mm, y + 9 * mm)
-        bird.curveTo(x + 1 * mm, y + 3 * mm, x + 5 * mm, y + 2 * mm, x + 10 * mm, y + 4 * mm)
-        bird.curveTo(x + 7 * mm, y - 3 * mm, x, y - 6 * mm, x - 5 * mm, y - 4 * mm)
-        bird.curveTo(x - 8 * mm, y - 6 * mm, x - 10 * mm, y - 3 * mm, x - 12 * mm, y)
-        canvas.setStrokeColor(colors.HexColor("#6698BD"))
-        canvas.setLineWidth(1.5)
-        canvas.drawPath(bird, stroke=1, fill=0)
+        canvas.line(x + 15 * mm, y, x + 15 * mm, y + 3 * mm)
+        canvas.setStrokeColor(colors.HexColor("#D5A459"))
+        canvas.setLineWidth(2.7)
+        canvas.line(x + 15 * mm, y + 4 * mm, x + 15 * mm, y + 23 * mm)
+        canvas.line(x + 8 * mm, y + 17 * mm, x + 22 * mm, y + 17 * mm)
+
+        # Colombe blanche avec ailes ouvertes et rameau d'olivier.
+        cx, cy = w - 29 * mm, h - 20 * mm
+        canvas.setFillColor(colors.HexColor("#D2E8F4"))
+        canvas.circle(cx, cy, 12 * mm, fill=1, stroke=0)
+        dove = canvas.beginPath()
+        dove.moveTo(cx - 13 * mm, cy - 2 * mm)
+        dove.curveTo(cx - 7 * mm, cy - 3 * mm, cx - 6 * mm, cy + 6 * mm, cx + 2 * mm, cy + 11 * mm)
+        dove.curveTo(cx + 2 * mm, cy + 4 * mm, cx + 5 * mm, cy + 3 * mm, cx + 11 * mm, cy + 5 * mm)
+        dove.curveTo(cx + 8 * mm, cy - 3 * mm, cx + 3 * mm, cy - 7 * mm, cx - 4 * mm, cy - 5 * mm)
+        dove.curveTo(cx - 8 * mm, cy - 7 * mm, cx - 10 * mm, cy - 4 * mm, cx - 13 * mm, cy - 2 * mm)
+        dove.close()
+        canvas.setFillColor(colors.white)
+        canvas.setStrokeColor(colors.HexColor("#5C9DC5"))
+        canvas.setLineWidth(1.1)
+        canvas.drawPath(dove, stroke=1, fill=1)
+        canvas.setFillColor(colors.HexColor("#3B6F91"))
+        canvas.circle(cx + 7 * mm, cy + 4 * mm, .55 * mm, fill=1, stroke=0)
+        canvas.setStrokeColor(colors.HexColor("#5D9A6C"))
+        canvas.setLineWidth(1)
+        canvas.line(cx + 10 * mm, cy + 3 * mm, cx + 16 * mm, cy + 1 * mm)
+        for dx, dy in ((12, 2), (14, 1)):
+            canvas.setFillColor(colors.HexColor("#6FAE79"))
+            canvas.ellipse(cx + dx * mm, cy + dy * mm,
+                           cx + (dx + 2) * mm, cy + (dy + 1.2) * mm, fill=1, stroke=0)
+
         page_index = min(document.page - 1, len(groups) - 1)
         canvas.setFillColor(navy)
         canvas.setFont("Helvetica-Bold", 16)
         canvas.drawCentredString(w / 2, h - 14 * mm, pdf_month_title(groups[page_index], title))
+        canvas.setFillColor(colors.HexColor("#3E6787"))
         canvas.setFont("Helvetica-Oblique", 8)
         canvas.drawCentredString(w / 2, h - 20 * mm, "Ta parole est la lampe de mes pas, la lumière de ma route (Ps 119, 105)")
         canvas.setFont("Helvetica", 7)
-        canvas.drawCentredString(w / 2, h - 25 * mm, "Références bibliques : AELF")
+        label = "Références bibliques : AELF" if any(
+            str(r.get("Source références", "")).startswith("AELF") for r in groups[page_index]
+        ) else "Références bibliques : programme enregistré"
+        canvas.drawCentredString(w / 2, h - 25 * mm, label)
         canvas.restoreState()
 
     doc.build(story, onFirstPage=illustrated_header, onLaterPages=illustrated_header)
