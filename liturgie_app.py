@@ -178,12 +178,7 @@ def _runtime_core_source():
         '    st.caption("📱 Vue téléphone : ouvrez une célébration pour voir toutes les références et fonctions sans défilement horizontal.")\n',
         "libellé vue téléphone",
     )
-    source = _replace_once(
-        source,
-        '            Paragraph("Dimanche", header_style),\n',
-        '            Paragraph("Célébration", header_style),\n',
-        "en-tête PDF célébration",
-    )
+    # Le cœur affiche déjà « Célébration » depuis la mise à jour PDF.
     source = _replace_once(
         source,
         """def next_published_sunday(state, reference_day=None):
