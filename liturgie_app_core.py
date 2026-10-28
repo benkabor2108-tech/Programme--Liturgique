@@ -1873,7 +1873,19 @@ def pdf_bytes(rows, title="Programme liturgique"):
             Paragraph("Lecteurs : 1re et 2e", header_style),
             Paragraph("Monition et prière universelle", header_style),
         ]]
-        for item in flat_rows(month_rows):
+        for row_index, item in enumerate(flat_rows(month_rows)):
+            # Le libellé du jour provient de la date réelle de la célébration.
+            raw_date = str(month_rows[row_index].get("date", "")) if row_index < len(month_rows) else ""
+            try:
+                service_day = date.fromisoformat(raw_date)
+                date_label = service_day.strftime("%d/%m/%Y")
+                weekday_label = "Samedi" if service_day.weekday() == 5 else (
+                    "Dimanche" if service_day.weekday() == 6 else
+                    ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi")[service_day.weekday()]
+                )
+            except (ValueError, TypeError):
+                date_label = str(item.get("Dimanche", ""))
+                weekday_label = ""
             refs = (
                 f"<b>1re :</b> {escape(item['1re lecture'] or '-')}<br/>"
                 f"<b>2e :</b> {escape(item['2e lecture'] or '-')}<br/>"
@@ -1893,11 +1905,8 @@ def pdf_bytes(rows, title="Programme liturgique"):
             )
             data.append([
                 Paragraph(
-                    "<b>" + escape(str(item["Dimanche"]).split()[-1]) + "</b>" +
-                    ("<br/><font color='#34658A'><i>(" + escape(str(item["Dimanche"]).split()[0]) + ")</i></font>"
-                     if str(item["Dimanche"]).startswith(("Samedi ", "Dimanche ")) else
-                     ("<br/><font color='#34658A'><i>(" + ("Samedi" if date.fromisoformat(str(month_rows[min(len(data)-1, len(month_rows)-1)].get("date", ""))).weekday() == 5 else "Dimanche") + ")</i></font>"
-                      if str(item["Dimanche"]).count("/") == 2 else "")),
+                    "<b>" + escape(date_label) + "</b>" +
+                    ("<br/><font color='#34658A'><i>(" + escape(weekday_label) + ")</i></font>" if weekday_label else ""),
                     date_style,
                 ),
                 Paragraph(refs, cell_style),
