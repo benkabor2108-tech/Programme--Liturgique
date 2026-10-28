@@ -1810,7 +1810,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
         pagesize=landscape(A4),
         leftMargin=8 * mm,
         rightMargin=8 * mm,
-        topMargin=8 * mm,
+        topMargin=36 * mm,
         bottomMargin=8 * mm,
         title=title,
         author="Programme liturgique Streamlit",
@@ -1864,10 +1864,8 @@ def pdf_bytes(rows, title="Programme liturgique"):
     story = []
     for group_index, month_rows in enumerate(groups):
         month_title = pdf_month_title(month_rows, title)
-        story.append(Paragraph(escape(month_title), title_style))
-        story.append(Paragraph("<i>« Ta parole est la lampe de mes pas, la lumière de ma route » (Ps 119, 105)</i>", note_style))
         source_text = "Références bibliques : AELF" if any(str(r.get("Source références", "")).startswith("AELF") for r in month_rows) else "Références bibliques : programme enregistré"
-        story.append(Paragraph(escape(source_text), note_style))
+
 
         data = [[
             Paragraph("Célébration", header_style),
@@ -1921,7 +1919,53 @@ def pdf_bytes(rows, title="Programme liturgique"):
         if group_index < len(groups) - 1:
             story.append(PageBreak())
 
-    doc.build(story)
+
+    def illustrated_header(canvas, document):
+        canvas.saveState()
+        w, h = landscape(A4)
+        navy = colors.HexColor("#164A73")
+        canvas.setFillColor(colors.HexColor("#EAF4FB"))
+        canvas.rect(8 * mm, h - 32 * mm, w - 16 * mm, 27 * mm, stroke=0, fill=1)
+        canvas.setStrokeColor(colors.HexColor("#89B1CF"))
+        canvas.line(8 * mm, h - 32 * mm, w - 8 * mm, h - 32 * mm)
+        # Bible ouverte et croix.
+        x, y = 13 * mm, h - 27 * mm
+        book = canvas.beginPath()
+        book.moveTo(x, y + 2 * mm)
+        book.curveTo(x + 7 * mm, y + 6 * mm, x + 10 * mm, y + 5 * mm, x + 15 * mm, y + 2 * mm)
+        book.curveTo(x + 20 * mm, y + 5 * mm, x + 24 * mm, y + 6 * mm, x + 30 * mm, y + 2 * mm)
+        book.lineTo(x + 30 * mm, y)
+        book.curveTo(x + 22 * mm, y + 2 * mm, x + 19 * mm, y + 1 * mm, x + 15 * mm, y)
+        book.curveTo(x + 10 * mm, y + 1 * mm, x + 7 * mm, y + 2 * mm, x, y)
+        book.close()
+        canvas.setFillColor(colors.HexColor("#FFF8E9"))
+        canvas.setStrokeColor(colors.HexColor("#C99B52"))
+        canvas.drawPath(book, fill=1, stroke=1)
+        canvas.setLineWidth(2.5)
+        canvas.line(x + 15 * mm, y + 4 * mm, x + 15 * mm, y + 21 * mm)
+        canvas.line(x + 9 * mm, y + 15 * mm, x + 21 * mm, y + 15 * mm)
+        # Colombe stylisée, à droite.
+        x, y = w - 28 * mm, h - 20 * mm
+        bird = canvas.beginPath()
+        bird.moveTo(x - 12 * mm, y)
+        bird.curveTo(x - 4 * mm, y - 2 * mm, x - 4 * mm, y + 7 * mm, x + 2 * mm, y + 9 * mm)
+        bird.curveTo(x + 1 * mm, y + 3 * mm, x + 5 * mm, y + 2 * mm, x + 10 * mm, y + 4 * mm)
+        bird.curveTo(x + 7 * mm, y - 3 * mm, x, y - 6 * mm, x - 5 * mm, y - 4 * mm)
+        bird.curveTo(x - 8 * mm, y - 6 * mm, x - 10 * mm, y - 3 * mm, x - 12 * mm, y)
+        canvas.setStrokeColor(colors.HexColor("#6698BD"))
+        canvas.setLineWidth(1.5)
+        canvas.drawPath(bird, stroke=1, fill=0)
+        page_index = min(document.page - 1, len(groups) - 1)
+        canvas.setFillColor(navy)
+        canvas.setFont("Helvetica-Bold", 16)
+        canvas.drawCentredString(w / 2, h - 14 * mm, pdf_month_title(groups[page_index], title))
+        canvas.setFont("Helvetica-Oblique", 8)
+        canvas.drawCentredString(w / 2, h - 20 * mm, "Ta parole est la lampe de mes pas, la lumiere de ma route (Ps 119, 105)")
+        canvas.setFont("Helvetica", 7)
+        canvas.drawCentredString(w / 2, h - 25 * mm, "References bibliques : AELF")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=illustrated_header, onLaterPages=illustrated_header)
     output.seek(0)
     return output.getvalue()
 
