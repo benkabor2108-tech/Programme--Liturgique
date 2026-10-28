@@ -19,7 +19,7 @@ import streamlit as st
 import xlsxwriter
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A3, A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -1807,7 +1807,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     output = io.BytesIO()
     doc = SimpleDocTemplate(
         output,
-        pagesize=landscape(A4),
+        pagesize=landscape(A3),
         leftMargin=8 * mm,
         rightMargin=8 * mm,
         topMargin=8 * mm,
@@ -1831,7 +1831,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=10.0, leading=13.2,
+        fontSize=9.0, leading=11.5,
     )
     date_style = ParagraphStyle(
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
@@ -1877,12 +1877,12 @@ def pdf_bytes(rows, title="Programme liturgique"):
         ]]
         for item in flat_rows(month_rows):
             refs = (
-                f"<b>1re lecture</b><br/>{escape(item['1re lecture'] or '-')}<br/><br/>"
-                f"<b>2e lecture</b><br/>{escape(item['2e lecture'] or '-')}<br/><br/>"
+                f"<b>1re lecture</b><br/>{escape(item['1re lecture'] or '-')}<br/>"
+                f"<b>2e lecture</b><br/>{escape(item['2e lecture'] or '-')}<br/>"
                 f"<b>Évangile</b><br/>{escape(item['Évangile'] or '-')}"
             )
             readers = (
-                f"<b>1re lecture</b><br/>{escape(item['Lecteur 1'] or '-')}<br/><br/>"
+                f"<b>1re lecture</b><br/>{escape(item['Lecteur 1'] or '-')}<br/>"
                 f"<b>2e lecture</b><br/>{escape(item['Lecteur 2'] or '-')}"
             )
             # Samedi : une seule monition/P.U. en mooré.
@@ -1892,10 +1892,10 @@ def pdf_bytes(rows, title="Programme liturgique"):
             else:
                 monitions = (
                     f"<b>Français</b><br/>{escape(item['Monition/P.U. FR'] or '-')}" 
-                    f"<br/><br/><b>Mooré</b><br/>{escape(item['Monition/P.U. MO'] or '-')}"
+                    f"<br/><b>Mooré</b><br/>{escape(item['Monition/P.U. MO'] or '-')}"
                 )
             annonces = (
-                f"<b>Français</b><br/>{escape(item['Annonces FR'] or '-')}<br/><br/>"
+                f"<b>Français</b><br/>{escape(item['Annonces FR'] or '-')}<br/>"
                 f"<b>Mooré</b><br/>{escape(item['Annonces MO'] or '-')}"
             )
             data.append([
@@ -1908,7 +1908,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
 
         table = Table(
             data,
-            colWidths=[27 * mm, 64 * mm, 62 * mm, 62 * mm, 62 * mm],
+            colWidths=[32 * mm, 90 * mm, 92 * mm, 92 * mm, 92 * mm],
             repeatRows=1,
             hAlign="CENTER",
         )
@@ -1917,9 +1917,9 @@ def pdf_bytes(rows, title="Programme liturgique"):
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1F2937")),
             ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#9CA3AF")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
         ]))
