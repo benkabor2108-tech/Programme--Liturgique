@@ -1892,7 +1892,14 @@ def pdf_bytes(rows, title="Programme liturgique"):
                 f"<b>MO :</b> {escape(item['Annonces MO'] or '-')}"
             )
             data.append([
-                Paragraph(escape(item["Dimanche"]) + ("<br/><font color='#34658A'>Samedi</font>" if str(item.get("Dimanche", "")).startswith("Samedi") else "<br/><font color='#34658A'>Dimanche</font>" if str(item.get("Dimanche", "")).startswith("Dimanche") else ""), date_style),
+                Paragraph(
+                    "<b>" + escape(str(item["Dimanche"]).split()[-1]) + "</b>" +
+                    ("<br/><font color='#34658A'><i>(" + escape(str(item["Dimanche"]).split()[0]) + ")</i></font>"
+                     if str(item["Dimanche"]).startswith(("Samedi ", "Dimanche ")) else
+                     ("<br/><font color='#34658A'><i>(" + ("Samedi" if date.fromisoformat(str(month_rows[min(len(data)-1, len(month_rows)-1)].get("date", ""))).weekday() == 5 else "Dimanche") + ")</i></font>"
+                      if str(item["Dimanche"]).count("/") == 2 else "")),
+                    date_style,
+                ),
                 Paragraph(refs, cell_style),
                 Paragraph(readers, cell_style),
                 Paragraph(monitions, cell_style),
@@ -1960,9 +1967,9 @@ def pdf_bytes(rows, title="Programme liturgique"):
         canvas.setFont("Helvetica-Bold", 16)
         canvas.drawCentredString(w / 2, h - 14 * mm, pdf_month_title(groups[page_index], title))
         canvas.setFont("Helvetica-Oblique", 8)
-        canvas.drawCentredString(w / 2, h - 20 * mm, "Ta parole est la lampe de mes pas, la lumiere de ma route (Ps 119, 105)")
+        canvas.drawCentredString(w / 2, h - 20 * mm, "Ta parole est la lampe de mes pas, la lumière de ma route (Ps 119, 105)")
         canvas.setFont("Helvetica", 7)
-        canvas.drawCentredString(w / 2, h - 25 * mm, "References bibliques : AELF")
+        canvas.drawCentredString(w / 2, h - 25 * mm, "Références bibliques : AELF")
         canvas.restoreState()
 
     doc.build(story, onFirstPage=illustrated_header, onLaterPages=illustrated_header)
