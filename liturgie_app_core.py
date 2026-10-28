@@ -1818,7 +1818,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "LiturgieTitle", parent=styles["Title"], fontName="Helvetica-Bold",
-        fontSize=12, leading=14, alignment=TA_CENTER, spaceAfter=4 * mm,
+        fontSize=16, leading=19, textColor=colors.HexColor('#123B63'), alignment=TA_CENTER, spaceAfter=2 * mm,
     )
     note_style = ParagraphStyle(
         "LiturgieNote", parent=styles["Normal"], fontName="Helvetica",
@@ -1827,11 +1827,11 @@ def pdf_bytes(rows, title="Programme liturgique"):
     )
     header_style = ParagraphStyle(
         "LiturgieHeader", parent=styles["Normal"], fontName="Helvetica-Bold",
-        fontSize=8, leading=9.5, alignment=TA_CENTER,
+        fontSize=9, leading=11, textColor=colors.white, alignment=TA_CENTER,
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=8, leading=9.8,
+        fontSize=8.8, leading=11.2,
     )
     date_style = ParagraphStyle(
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
@@ -1871,8 +1871,8 @@ def pdf_bytes(rows, title="Programme liturgique"):
         data = [[
             Paragraph("Célébration", header_style),
             Paragraph("Références bibliques", header_style),
-            Paragraph("Lecteurs", header_style),
-            Paragraph("Monition + P.U.", header_style),
+            Paragraph("Lecteurs : 1re et 2e", header_style),
+            Paragraph("Monition et prière universelle", header_style),
         ]]
         for item in flat_rows(month_rows):
             refs = (
@@ -1906,15 +1906,15 @@ def pdf_bytes(rows, title="Programme liturgique"):
             hAlign="CENTER",
         )
         table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#D9EAF7")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1F2937")),
-            ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#9CA3AF")),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#124B78")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#87A4BC")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#EAF3FA")]),
         ]))
         story.append(table)
         if group_index < len(groups) - 1:
