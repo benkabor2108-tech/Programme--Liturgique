@@ -5,6 +5,27 @@ import random
 from history_protection import is_history_row_active
 
 
+
+def validate_bilingual_rows(rows):
+    """Refuse toute célébration incomplète avant son enregistrement."""
+    for row in rows:
+        codes = row.get("codes") or {}
+        required = ("r1", "r2", "f_mon", "m_mon")
+        if any(not codes.get(key) for key in required):
+            raise ValueError(f"Affectations incomplètes pour {row.get('date', '?')}.")
+        if (codes["r1"].startswith("F") == codes["r2"].startswith("F")
+                or not codes["f_mon"].startswith("F")
+                or not codes["m_mon"].startswith("M")):
+            raise ValueError(f"Langues des affectations incorrectes pour {row.get('date', '?')}.")
+        if len({codes[key] for key in required}) != 4:
+            raise ValueError(f"Intervenants en double pour {row.get('date', '?')}.")
+        monitions = row.get("Monition + P.U.", "")
+        if not ("FR : " in monitions and "MO : " in monitions):
+            raise ValueError(f"Monitions bilingues manquantes pour {row.get('date', '?')}.")
+        if row.get("Annonces") or codes.get("f_ann") or codes.get("m_ann"):
+            raise ValueError(f"Annonces non autorisées pour {row.get('date', '?')}.")
+    return True
+
 def weekend_dates(sundays, year, month):
     dates = []
     for sunday in sundays(year, month):
@@ -91,5 +112,6 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
             working["reading_pairs"].append([chosen["FR_read"], chosen["MO_read"]])
             working["monition_pairs"].append([codes["f_mon"], codes["m_mon"]])
             working["next_first_language"] = "MO" if first == "FR" else "FR"
+    validate_bilingual_rows(rows)
     working["history"].extend(deepcopy(rows))
     return rows, working
