@@ -747,6 +747,13 @@ def full_fresh_start(state):
     # Les historiques restent intacts et les anciens chargés d'annonces sont
     # disponibles pour les autres fonctions suivant la rotation.
     # Le moteur bilingue strict ne génère aucun poste d'annonces.
+    # Neutraliser également les affectations d'annonces du générateur historique
+    # conservé pour compatibilité. Il n'est plus utilisé pour publier les week-ends.
+    source = source.replace('            assign(state, m_mon, "ANNONCE", sunday)\\n', '')
+    source = source.replace('        assign(state, f_ann, "ANNONCE", sunday)\\n', '')
+    source = source.replace('        assign(state, m_ann, "ANNONCE", sunday)\\n', '')
+    source = source.replace('            assign(state, f_ann, "ANNONCE", sunday)\\n', '')
+    source = source.replace('            assign(state, m_ann, "ANNONCE", sunday)\\n', '')
     source = source.replace(
         '    if codes.get("f_ann") == code or codes.get("m_ann") == code:\n        return f"Annonces — {lang}"\n',
         '',
