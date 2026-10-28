@@ -228,131 +228,9 @@ def _runtime_core_source():
         "saisie manuelle par dimanche de référence",
     )
 
-    source = _replace_once(
-        source,
-        '''        f_read, m_read = choose_readers(state, sunday, rng)
-        first = state["next_first_language"]
-        if first == "FR":
-            r1_code, r1_lang, r2_code, r2_lang = f_read, "FR", m_read, "MO"
-        else:
-            r1_code, r1_lang, r2_code, r2_lang = m_read, "MO", f_read, "FR"
+    # L'ancien patch du samedi (trois rôles MO uniquement) est retiré.
+    # La génération utilise désormais le moteur bilingue strict.
 
-        excluded = {f_read, m_read}
-        f_mon, m_mon = choose_monitions(state, sunday, excluded, rng)
-        excluded.update({f_mon, m_mon})
-        f_ann = choose_announcement(state, "FR", sunday, excluded, rng)
-        m_ann = choose_announcement(state, "MO", sunday, excluded, rng)
-
-        assign(state, f_read, "LECTURE", sunday)
-        assign(state, m_read, "LECTURE", sunday)
-        state["reading_pairs"].append([f_read, m_read])
-        assign(state, f_mon, "MONITION", sunday)
-        assign(state, m_mon, "MONITION", sunday)
-        state["monition_pairs"].append([f_mon, m_mon])
-        assign(state, f_ann, "ANNONCE", sunday)
-        assign(state, m_ann, "ANNONCE", sunday)
-        state["next_first_language"] = "MO" if first == "FR" else "FR"
-''',
-        '''        is_saturday = sunday.weekday() == 5
-        if is_saturday:
-            # Messe anticipée : trois intervenants distincts, tous mooréphones.
-            # Le 3e assure Monition + P.U. + Annonces.
-            mo_read_pool = [
-                c for c in programmable_codes(state, "MO", sunday)
-                if state["people"][c]["next_role"] in (None, "LECTURE")
-            ]
-            if len(mo_read_pool) < 2:
-                raise RuntimeError(
-                    "Le samedi soir exige deux lecteurs mooréphones disponibles pour les deux lectures."
-                )
-            seen = set(state["reading_cycle_seen"].get("MO", []))
-            rng.shuffle(mo_read_pool)
-            mo_read_pool.sort(
-                key=lambda c: (1 if c in seen else 0, reading_rank(state, c, sunday))
-            )
-            r1_code, r2_code = mo_read_pool[0], mo_read_pool[1]
-            r1_lang = r2_lang = "MO"
-
-            excluded = {r1_code, r2_code}
-            mo_mon_pool = monition_pool(state, "MO", excluded, sunday)
-            if not mo_mon_pool:
-                raise RuntimeError(
-                    "Le samedi soir exige un troisième lecteur mooréphone disponible pour la monition/P.U."
-                )
-            rng.shuffle(mo_mon_pool)
-            m_mon = min(mo_mon_pool, key=lambda c: monition_rank(state, c, sunday))
-            f_mon = None
-            # Messe anticipée : la même personne assure Monition + P.U. + Annonces.
-            f_ann = None
-            m_ann = m_mon
-
-            assign(state, r1_code, "LECTURE", sunday)
-            assign(state, r2_code, "LECTURE", sunday)
-            assign(state, m_mon, "MONITION", sunday)
-            assign(state, m_mon, "ANNONCE", sunday)
-            # Ne pas modifier next_first_language : l'alternance FR/MO reste pilotée par les dimanches.
-        else:
-            f_read, m_read = choose_readers(state, sunday, rng)
-            first = state["next_first_language"]
-            if first == "FR":
-                r1_code, r1_lang, r2_code, r2_lang = f_read, "FR", m_read, "MO"
-            else:
-                r1_code, r1_lang, r2_code, r2_lang = m_read, "MO", f_read, "FR"
-
-            excluded = {f_read, m_read}
-            f_mon, m_mon = choose_monitions(state, sunday, excluded, rng)
-            excluded.update({f_mon, m_mon})
-            f_ann = choose_announcement(state, "FR", sunday, excluded, rng)
-            m_ann = choose_announcement(state, "MO", sunday, excluded, rng)
-
-            assign(state, f_read, "LECTURE", sunday)
-            assign(state, m_read, "LECTURE", sunday)
-            state["reading_pairs"].append([f_read, m_read])
-            assign(state, f_mon, "MONITION", sunday)
-            assign(state, m_mon, "MONITION", sunday)
-            state["monition_pairs"].append([f_mon, m_mon])
-            assign(state, f_ann, "ANNONCE", sunday)
-            assign(state, m_ann, "ANNONCE", sunday)
-            state["next_first_language"] = "MO" if first == "FR" else "FR"
-''',
-        "samedi trois lecteurs mooréphones",
-    )
-    source = _replace_once(
-        source,
-        '            "Monition + P.U.": f"FR : {names[f_mon]}\\nMO : {names[m_mon]}",\n',
-        '            "Monition + P.U.": (f"MO : {names[m_mon]}" if is_saturday else f"FR : {names[f_mon]}\\nMO : {names[m_mon]}"),\n',
-        "affichage monition samedi mooré",
-    )
-    source = _replace_once(
-        source,
-        '            "Annonces": f"FR : {names[f_ann]}\\nMO : {names[m_ann]}",\n',
-        '            "Annonces": (f"MO : {names[m_mon]}" if is_saturday else f"FR : {names[f_ann]}\\nMO : {names[m_ann]}"),\n',
-        "affichage annonces samedi même personne",
-    )
-    source = _replace_once(
-        source,
-        '''            "codes": {
-                "r1": r1_code, "r2": r2_code,
-                "f_mon": f_mon, "m_mon": m_mon,
-                "f_ann": f_ann, "m_ann": m_ann,
-            },
-''',
-        '''            "codes": (
-                {
-                    "r1": r1_code, "r2": r2_code,
-                    "m_mon": m_mon,
-                    "m_ann": m_mon,
-                }
-                if is_saturday else
-                {
-                    "r1": r1_code, "r2": r2_code,
-                    "f_mon": f_mon, "m_mon": m_mon,
-                    "f_ann": f_ann, "m_ann": m_ann,
-                }
-            ),
-''',
-        "codes samedi sans lecteur français",
-    )
     source = _replace_once(
         source,
         '''        if r1 in current and r2 in current:
@@ -964,7 +842,15 @@ def full_fresh_start(state):
     source = _replace_once(
         source,
         '                rows, new_state = generate_bilingual_weekends(state, year, month, refs, seed, sundays, normalize_state, programmable_codes, assign)\n                st.session_state.liturgie_state = new_state\n',
-        '''                rows, new_state = generate_month(state, year, month, refs, seed)
+        '''                # Les références du moteur bilingue sont indexées par dimanche liturgique.
+                _sunday_refs = {
+                    liturgical_reference_day(d).isoformat(): refs[d.isoformat()]
+                    for d in month_sundays
+                }
+                rows, new_state = generate_bilingual_weekends(
+                    state, year, month, _sunday_refs, seed, sundays,
+                    normalize_state, programmable_codes, assign,
+                )
                 _expected_dates = {d.isoformat() for d in weekend_service_days(year, month)}
                 _generated_dates = [str(row.get("date", "")) for row in rows]
                 if len(_generated_dates) != len(_expected_dates) or set(_generated_dates) != _expected_dates:
