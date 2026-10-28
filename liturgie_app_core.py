@@ -1630,7 +1630,7 @@ def generate_month(state, year, month, refs, seed):
 
 def labeled_lines(text):
     result = {}
-    for raw in str(text or "").splitlines():
+    for raw in str(text or "").replace("\\n", "\n").splitlines():
         if ":" not in raw:
             continue
         label, value = raw.split(":", 1)
@@ -1807,7 +1807,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     output = io.BytesIO()
     doc = SimpleDocTemplate(
         output,
-        pagesize=landscape(A3),
+        pagesize=landscape(A4),
         leftMargin=8 * mm,
         rightMargin=8 * mm,
         topMargin=8 * mm,
@@ -1818,7 +1818,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "LiturgieTitle", parent=styles["Title"], fontName="Helvetica-Bold",
-        fontSize=15, leading=18, alignment=TA_CENTER, spaceAfter=4 * mm,
+        fontSize=12, leading=14, alignment=TA_CENTER, spaceAfter=4 * mm,
     )
     note_style = ParagraphStyle(
         "LiturgieNote", parent=styles["Normal"], fontName="Helvetica",
@@ -1827,11 +1827,11 @@ def pdf_bytes(rows, title="Programme liturgique"):
     )
     header_style = ParagraphStyle(
         "LiturgieHeader", parent=styles["Normal"], fontName="Helvetica-Bold",
-        fontSize=9.2, leading=11.2, alignment=TA_CENTER,
+        fontSize=8, leading=9.5, alignment=TA_CENTER,
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=9.0, leading=11.5,
+        fontSize=8, leading=9.8,
     )
     date_style = ParagraphStyle(
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
@@ -1873,7 +1873,6 @@ def pdf_bytes(rows, title="Programme liturgique"):
             Paragraph("Références bibliques", header_style),
             Paragraph("Lecteurs", header_style),
             Paragraph("Monition + P.U.", header_style),
-            Paragraph("Annonces", header_style),
         ]]
         for item in flat_rows(month_rows):
             refs = (
@@ -1885,15 +1884,10 @@ def pdf_bytes(rows, title="Programme liturgique"):
                 f"<b>1re lecture</b><br/>{escape(item['Lecteur 1'] or '-')}<br/>"
                 f"<b>2e lecture</b><br/>{escape(item['Lecteur 2'] or '-')}"
             )
-            # Samedi : une seule monition/P.U. en mooré.
-            # Ne pas afficher une ligne française vide comme une affectation manquante.
-            if str(item.get("Dimanche", "")).startswith("Samedi"):
-                monitions = f"<b>Mooré</b><br/>{escape(item['Monition/P.U. MO'] or '-')}"
-            else:
-                monitions = (
-                    f"<b>Français</b><br/>{escape(item['Monition/P.U. FR'] or '-')}" 
-                    f"<br/><b>Mooré</b><br/>{escape(item['Monition/P.U. MO'] or '-')}"
-                )
+            monitions = (
+                f"<b>Français</b><br/>{escape(item['Monition/P.U. FR'] or '-')}<br/>"
+                f"<b>Mooré</b><br/>{escape(item['Monition/P.U. MO'] or '-')}"
+            )
             annonces = (
                 f"<b>Français</b><br/>{escape(item['Annonces FR'] or '-')}<br/>"
                 f"<b>Mooré</b><br/>{escape(item['Annonces MO'] or '-')}"
@@ -1903,12 +1897,11 @@ def pdf_bytes(rows, title="Programme liturgique"):
                 Paragraph(refs, cell_style),
                 Paragraph(readers, cell_style),
                 Paragraph(monitions, cell_style),
-                Paragraph(annonces, cell_style),
             ])
 
         table = Table(
             data,
-            colWidths=[32 * mm, 90 * mm, 92 * mm, 92 * mm, 92 * mm],
+            colWidths=[29 * mm, 80 * mm, 83 * mm, 85 * mm],
             repeatRows=1,
             hAlign="CENTER",
         )
@@ -1919,8 +1912,8 @@ def pdf_bytes(rows, title="Programme liturgique"):
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
         ]))
         story.append(table)
