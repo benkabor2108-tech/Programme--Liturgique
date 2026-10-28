@@ -1893,7 +1893,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
                 f"<b>MO :</b> {escape(item['Annonces MO'] or '-')}"
             )
             data.append([
-                Paragraph(escape(item["Dimanche"]), date_style),
+                Paragraph(escape(item["Dimanche"]) + ("<br/><font color='#34658A'>Samedi</font>" if str(item.get("Dimanche", "")).startswith("Samedi") else "<br/><font color='#34658A'>Dimanche</font>" if str(item.get("Dimanche", "")).startswith("Dimanche") else ""), date_style),
                 Paragraph(refs, cell_style),
                 Paragraph(readers, cell_style),
                 Paragraph(monitions, cell_style),
