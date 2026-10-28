@@ -1818,7 +1818,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "LiturgieTitle", parent=styles["Title"], fontName="Helvetica-Bold",
-        fontSize=16, leading=19, alignment=TA_CENTER, spaceAfter=4 * mm,
+        fontSize=15, leading=18, alignment=TA_CENTER, spaceAfter=4 * mm,
     )
     note_style = ParagraphStyle(
         "LiturgieNote", parent=styles["Normal"], fontName="Helvetica",
@@ -1827,11 +1827,11 @@ def pdf_bytes(rows, title="Programme liturgique"):
     )
     header_style = ParagraphStyle(
         "LiturgieHeader", parent=styles["Normal"], fontName="Helvetica-Bold",
-        fontSize=8.6, leading=10.0, alignment=TA_CENTER,
+        fontSize=9.2, leading=11.2, alignment=TA_CENTER,
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=8.5, leading=10.5,
+        fontSize=10.0, leading=13.2,
     )
     date_style = ParagraphStyle(
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
@@ -1869,7 +1869,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
         story.append(Paragraph(escape(source_text), note_style))
 
         data = [[
-            Paragraph("Dimanche", header_style),
+            Paragraph("Célébration", header_style),
             Paragraph("Références bibliques", header_style),
             Paragraph("Lecteurs", header_style),
             Paragraph("Monition + P.U.", header_style),
@@ -1877,26 +1877,26 @@ def pdf_bytes(rows, title="Programme liturgique"):
         ]]
         for item in flat_rows(month_rows):
             refs = (
-                f"<b>1re :</b> {escape(item['1re lecture'] or '-')}<br/>"
-                f"<b>2e :</b> {escape(item['2e lecture'] or '-')}<br/>"
-                f"<b>Év. :</b> {escape(item['Évangile'] or '-')}"
+                f"<b>1re lecture</b><br/>{escape(item['1re lecture'] or '-')}<br/><br/>"
+                f"<b>2e lecture</b><br/>{escape(item['2e lecture'] or '-')}<br/><br/>"
+                f"<b>Évangile</b><br/>{escape(item['Évangile'] or '-')}"
             )
             readers = (
-                f"<b>1re :</b> {escape(item['Lecteur 1'] or '-')}<br/>"
-                f"<b>2e :</b> {escape(item['Lecteur 2'] or '-')}"
+                f"<b>1re lecture</b><br/>{escape(item['Lecteur 1'] or '-')}<br/><br/>"
+                f"<b>2e lecture</b><br/>{escape(item['Lecteur 2'] or '-')}"
             )
             # Samedi : une seule monition/P.U. en mooré.
             # Ne pas afficher une ligne française vide comme une affectation manquante.
             if str(item.get("Dimanche", "")).startswith("Samedi"):
-                monitions = f"<b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
+                monitions = f"<b>Mooré</b><br/>{escape(item['Monition/P.U. MO'] or '-')}"
             else:
                 monitions = (
-                    f"<b>FR :</b> {escape(item['Monition/P.U. FR'] or '-')}" 
-                    f"<br/><b>MO :</b> {escape(item['Monition/P.U. MO'] or '-')}"
+                    f"<b>Français</b><br/>{escape(item['Monition/P.U. FR'] or '-')}" 
+                    f"<br/><br/><b>Mooré</b><br/>{escape(item['Monition/P.U. MO'] or '-')}"
                 )
             annonces = (
-                f"<b>FR :</b> {escape(item['Annonces FR'] or '-')}<br/>"
-                f"<b>MO :</b> {escape(item['Annonces MO'] or '-')}"
+                f"<b>Français</b><br/>{escape(item['Annonces FR'] or '-')}<br/><br/>"
+                f"<b>Mooré</b><br/>{escape(item['Annonces MO'] or '-')}"
             )
             data.append([
                 Paragraph(escape(item["Dimanche"]), date_style),
@@ -1908,7 +1908,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
 
         table = Table(
             data,
-            colWidths=[25 * mm, 61 * mm, 55 * mm, 55 * mm, 55 * mm],
+            colWidths=[27 * mm, 64 * mm, 62 * mm, 62 * mm, 62 * mm],
             repeatRows=1,
             hAlign="CENTER",
         )
@@ -1917,9 +1917,9 @@ def pdf_bytes(rows, title="Programme liturgique"):
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1F2937")),
             ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#9CA3AF")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
         ]))
