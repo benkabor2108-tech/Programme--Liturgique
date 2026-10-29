@@ -1971,6 +1971,12 @@ def pdf_bytes(rows, title="Programme liturgique"):
         canvas.setLineWidth(.5)
         canvas.rect(left, bottom, right - left, top - bottom, fill=0, stroke=1)
 
+        # Halo bleu lumineux autour de la Bible.
+        glow_x, glow_y = 28 * mm, h - 18 * mm
+        for radius, tone in ((17, "#E0EFF9"), (13, "#C9E2F3"), (9, "#B7D9EE")):
+            canvas.setFillColor(colors.HexColor(tone))
+            canvas.circle(glow_x, glow_y, radius * mm, fill=1, stroke=0)
+
         # Bible ouverte avec pages, reliure et croix dorée.
         x, y = 14 * mm, h - 27 * mm
         canvas.setFillColor(colors.HexColor("#C6D7E6"))
@@ -1992,6 +1998,10 @@ def pdf_bytes(rows, title="Programme liturgique"):
         canvas.setLineWidth(2.7)
         canvas.line(x + 15 * mm, y + 4 * mm, x + 15 * mm, y + 23 * mm)
         canvas.line(x + 8 * mm, y + 17 * mm, x + 22 * mm, y + 17 * mm)
+
+        # Halo bleu autour de la colombe.
+        canvas.setFillColor(colors.HexColor("#B4D9F1"))
+        canvas.circle(w - 29 * mm, h - 20 * mm, 15 * mm, fill=1, stroke=0)
 
         # Colombe blanche avec ailes ouvertes et rameau d'olivier.
         cx, cy = w - 29 * mm, h - 20 * mm
@@ -2020,12 +2030,12 @@ def pdf_bytes(rows, title="Programme liturgique"):
 
         page_index = min(document.page - 1, len(groups) - 1)
         canvas.setFillColor(navy)
-        canvas.setFont("Helvetica-Bold", 16)
+        canvas.setFont("Helvetica-Bold", 19)
         canvas.drawCentredString(w / 2, h - 14 * mm, pdf_month_title(groups[page_index], title))
         canvas.setFillColor(colors.HexColor("#3E6787"))
-        canvas.setFont("Helvetica-Oblique", 8)
+        canvas.setFont("Helvetica-BoldOblique", 8.7)
         canvas.drawCentredString(w / 2, h - 20 * mm, "Ta parole est la lampe de mes pas, la lumière de ma route (Ps 119, 105)")
-        canvas.setFont("Helvetica", 7)
+        canvas.setFont("Helvetica", 7.8)
         label = "Références bibliques : AELF" if any(
             str(r.get("Source références", "")).startswith("AELF") for r in groups[page_index]
         ) else "Références bibliques : programme enregistré"
