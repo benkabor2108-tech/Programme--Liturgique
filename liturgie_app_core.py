@@ -2003,30 +2003,74 @@ def pdf_bytes(rows, title="Programme liturgique"):
         canvas.setFillColor(colors.HexColor("#B4D9F1"))
         canvas.circle(w - 29 * mm, h - 20 * mm, 15 * mm, fill=1, stroke=0)
 
-        # Colombe blanche avec ailes ouvertes et rameau d'olivier.
+        # Colombe aux ailes déployées, avec plumes détaillées et rameau d'olivier.
+        # Dessin vectoriel indépendant du mois : aucun contenu du tableau n'est modifié.
         cx, cy = w - 29 * mm, h - 20 * mm
-        canvas.setFillColor(colors.HexColor("#D2E8F4"))
-        canvas.circle(cx, cy, 12 * mm, fill=1, stroke=0)
-        dove = canvas.beginPath()
-        dove.moveTo(cx - 13 * mm, cy - 2 * mm)
-        dove.curveTo(cx - 7 * mm, cy - 3 * mm, cx - 6 * mm, cy + 6 * mm, cx + 2 * mm, cy + 11 * mm)
-        dove.curveTo(cx + 2 * mm, cy + 4 * mm, cx + 5 * mm, cy + 3 * mm, cx + 11 * mm, cy + 5 * mm)
-        dove.curveTo(cx + 8 * mm, cy - 3 * mm, cx + 3 * mm, cy - 7 * mm, cx - 4 * mm, cy - 5 * mm)
-        dove.curveTo(cx - 8 * mm, cy - 7 * mm, cx - 10 * mm, cy - 4 * mm, cx - 13 * mm, cy - 2 * mm)
-        dove.close()
+        canvas.setFillColor(colors.HexColor("#B7DCF1"))
+        canvas.circle(cx, cy, 13 * mm, fill=1, stroke=0)
+        canvas.setFillColor(colors.HexColor("#D9EEF9"))
+        canvas.circle(cx - 1 * mm, cy + 1 * mm, 10 * mm, fill=1, stroke=0)
+
+        # Aile haute : éventail de rémiges, dessinées séparément pour un rendu naturel.
+        canvas.setFillColor(colors.HexColor("#FFFFFF"))
+        canvas.setStrokeColor(colors.HexColor("#A7C8DA"))
+        canvas.setLineWidth(0.45)
+        wing = canvas.beginPath()
+        wing.moveTo(cx - 2 * mm, cy - 2 * mm)
+        wing.curveTo(cx - 6 * mm, cy + 3 * mm, cx - 5 * mm, cy + 10 * mm, cx - 8 * mm, cy + 15 * mm)
+        wing.curveTo(cx - 2 * mm, cy + 13 * mm, cx + 1 * mm, cy + 9 * mm, cx + 3 * mm, cy + 5 * mm)
+        wing.curveTo(cx + 6 * mm, cy + 12 * mm, cx + 9 * mm, cy + 14 * mm, cx + 11 * mm, cy + 16 * mm)
+        wing.curveTo(cx + 11 * mm, cy + 7 * mm, cx + 7 * mm, cy + 1 * mm, cx + 2 * mm, cy - 3 * mm)
+        wing.close()
+        canvas.drawPath(wing, fill=1, stroke=1)
+        canvas.setStrokeColor(colors.HexColor("#BCD5E5"))
+        canvas.setLineWidth(0.45)
+        for ex, ey in ((-7, 13), (-5, 11), (-3, 9), (6, 11), (8, 13), (10, 14)):
+            feather = canvas.beginPath()
+            feather.moveTo(cx, cy + 1 * mm)
+            feather.curveTo(cx + ex * .35 * mm, cy + ey * .5 * mm,
+                            cx + ex * .8 * mm, cy + ey * .8 * mm,
+                            cx + ex * mm, cy + ey * mm)
+            canvas.drawPath(feather, stroke=1, fill=0)
+
+        # Corps, queue effilée, cou et tête tournés vers le rameau.
+        body = canvas.beginPath()
+        body.moveTo(cx - 11 * mm, cy - 6 * mm)
+        body.curveTo(cx - 7 * mm, cy - 5 * mm, cx - 5 * mm, cy - 1 * mm, cx - 1 * mm, cy - 2 * mm)
+        body.curveTo(cx + 3 * mm, cy - 4 * mm, cx + 5 * mm, cy + 1 * mm, cx + 8 * mm, cy + 3 * mm)
+        body.curveTo(cx + 12 * mm, cy + 5 * mm, cx + 14 * mm, cy + 2 * mm, cx + 12 * mm, cy)
+        body.curveTo(cx + 9 * mm, cy - 2 * mm, cx + 7 * mm, cy - 6 * mm, cx + 2 * mm, cy - 7 * mm)
+        body.curveTo(cx - 4 * mm, cy - 9 * mm, cx - 8 * mm, cy - 8 * mm, cx - 11 * mm, cy - 6 * mm)
+        body.close()
         canvas.setFillColor(colors.white)
-        canvas.setStrokeColor(colors.HexColor("#5C9DC5"))
-        canvas.setLineWidth(1.1)
-        canvas.drawPath(dove, stroke=1, fill=1)
-        canvas.setFillColor(colors.HexColor("#3B6F91"))
-        canvas.circle(cx + 7 * mm, cy + 4 * mm, .55 * mm, fill=1, stroke=0)
-        canvas.setStrokeColor(colors.HexColor("#5D9A6C"))
-        canvas.setLineWidth(1)
-        canvas.line(cx + 10 * mm, cy + 3 * mm, cx + 16 * mm, cy + 1 * mm)
-        for dx, dy in ((12, 2), (14, 1)):
-            canvas.setFillColor(colors.HexColor("#6FAE79"))
-            canvas.ellipse(cx + dx * mm, cy + dy * mm,
-                           cx + (dx + 2) * mm, cy + (dy + 1.2) * mm, fill=1, stroke=0)
+        canvas.setStrokeColor(colors.HexColor("#8BB6CF"))
+        canvas.setLineWidth(0.75)
+        canvas.drawPath(body, fill=1, stroke=1)
+        canvas.setFillColor(colors.HexColor("#334D61"))
+        canvas.circle(cx + 11 * mm, cy + 2 * mm, 0.55 * mm, fill=1, stroke=0)
+        beak = canvas.beginPath()
+        beak.moveTo(cx + 13 * mm, cy + 1 * mm)
+        beak.lineTo(cx + 16 * mm, cy + 0.4 * mm)
+        beak.lineTo(cx + 13 * mm, cy - 0.4 * mm)
+        beak.close()
+        canvas.setFillColor(colors.HexColor("#C99B48"))
+        canvas.drawPath(beak, fill=1, stroke=0)
+
+        # Rameau d'olivier : tige fine et feuilles en amande.
+        canvas.setStrokeColor(colors.HexColor("#538A56"))
+        canvas.setLineWidth(1.0)
+        branch = canvas.beginPath()
+        branch.moveTo(cx + 15 * mm, cy)
+        branch.curveTo(cx + 17 * mm, cy - 1 * mm, cx + 20 * mm, cy - 3 * mm,
+                       cx + 22 * mm, cy - 5 * mm)
+        canvas.drawPath(branch, stroke=1, fill=0)
+        canvas.setFillColor(colors.HexColor("#65A76A"))
+        for lx, ly, angle in ((17, -1, 28), (19, -3, -30), (21, -4, 32)):
+            canvas.saveState()
+            canvas.translate(cx + lx * mm, cy + ly * mm)
+            canvas.rotate(angle)
+            canvas.ellipse(-0.6 * mm, 0, 2.7 * mm, 1.15 * mm, fill=1, stroke=0)
+            canvas.restoreState()
 
         page_index = min(document.page - 1, len(groups) - 1)
         canvas.setFillColor(navy)
