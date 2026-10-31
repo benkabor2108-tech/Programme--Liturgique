@@ -57,31 +57,14 @@ jobs:
           python -m py_compile tests/test_whatsapp_ui_guards.py
           python -m py_compile tests/test_weekend_generation.py
 
-      - name: Run tests
-        run: |
-          python -m unittest tests/test_liturgical_drafts.py -v
-          python -m unittest tests/test_liturgical_drafts_automation.py -v
-          python -m unittest tests/test_history_protection.py -v
-          python -m unittest tests/test_state_store.py -v
-          python -m unittest tests/test_role_guards.py -v
-          python -m unittest tests/test_program_drafts.py -v
-          python -m unittest tests/test_bilingual_weekends.py -v
-          python -m unittest tests/test_attendance_window.py -v
-          python -m unittest tests/test_whatsapp_automation.py -v
-          python -m unittest tests/test_whatsapp_contact_readiness.py -v
-          python -m unittest tests/test_whatsapp_global_readiness.py -v
-          python -m unittest tests/test_whatsapp_reminder_preview.py -v
-          python -m unittest tests/test_whatsapp_ui_guards.py -v
-          python -m unittest tests/test_weekend_generation.py -v
+      - name: Run full test suite
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Verify key imports and versions
+        if: always()
         run: |
           python - <<'PY'
-          import requests
-          import streamlit
-          import xlsxwriter
-          import reportlab
-          import docx
+          import requests, streamlit, xlsxwriter, reportlab, docx
           print("requests", requests.__version__)
           print("streamlit", streamlit.__version__)
           print("xlsxwriter", xlsxwriter.__version__)
