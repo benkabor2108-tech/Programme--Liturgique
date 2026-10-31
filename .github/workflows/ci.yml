@@ -59,7 +59,7 @@ jobs:
 
       - name: Run tests
         run: |
-          python -m unittest tests/test_liturgical_drafts.py -v
+          python -m unittest discover -s tests -p 'test_*.py' -v
           python -m unittest tests/test_liturgical_drafts_automation.py -v
           python -m unittest tests/test_history_protection.py -v
           python -m unittest tests/test_state_store.py -v
@@ -74,6 +74,21 @@ jobs:
           python -m unittest tests/test_whatsapp_ui_guards.py -v
           python -m unittest tests/test_weekend_generation.py -v
 
+      - name: Verify key imports and versions
+        if: always()
+        run: |
+          python - <<'PY'
+          import requests
+          import streamlit
+          import xlsxwriter
+          import reportlab
+          import docx
+          print("requests", requests.__version__)
+          print("streamlit", streamlit.__version__)
+          print("xlsxwriter", xlsxwriter.__version__)
+          print("reportlab", reportlab.Version)
+          print("python-docx", docx.__version__)
+          P
       - name: Verify key imports and versions
         run: |
           python - <<'PY'
