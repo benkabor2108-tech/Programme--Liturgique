@@ -30,7 +30,7 @@ class HistoryProtectionTests(unittest.TestCase):
         self.assertIn('key = reference_day.strftime("%Y-%m")', pdf_section)
         compile(core, "liturgie_app_core.py", "exec")
 
-    def test_pdf_saturday_only_displays_moore_monition(self):
+    def test_pdf_saturday_uses_calendar_date_and_bilingual_monitions(self):
         core = (Path(__file__).resolve().parents[1] / "liturgie_app_core.py").read_text(encoding="utf-8")
         pdf_section = core.split("def pdf_bytes(rows", 1)[1].split("def show_mobile_program(rows", 1)[0]
         self.assertIn('"Samedi" if service_day.weekday() == 5', pdf_section)
