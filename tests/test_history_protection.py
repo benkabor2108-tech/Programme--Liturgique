@@ -25,17 +25,17 @@ class HistoryProtectionTests(unittest.TestCase):
         core = (Path(__file__).resolve().parents[1] / "liturgie_app_core.py").read_text(encoding="utf-8")
         pdf_section = core.split("def pdf_bytes(rows", 1)[1].split("def show_mobile_program(rows", 1)[0]
         self.assertIn("pagesize=landscape(A4)", pdf_section)
-        self.assertIn("fontSize=8.5, leading=10.5", pdf_section)
-        self.assertIn("fontSize=8.6, leading=10.0", pdf_section)
+        self.assertIn("fontSize=8.8, leading=11.2", pdf_section)
+        self.assertIn("fontSize=9, leading=11", pdf_section)
         self.assertIn('key = reference_day.strftime("%Y-%m")', pdf_section)
         compile(core, "liturgie_app_core.py", "exec")
 
-    def test_pdf_saturday_only_displays_moore_monition(self):
+    def test_pdf_saturday_uses_calendar_date_and_bilingual_monitions(self):
         core = (Path(__file__).resolve().parents[1] / "liturgie_app_core.py").read_text(encoding="utf-8")
         pdf_section = core.split("def pdf_bytes(rows", 1)[1].split("def show_mobile_program(rows", 1)[0]
-        self.assertIn('if str(item.get("Dimanche", "")).startswith("Samedi"):', pdf_section)
-        self.assertIn('monitions = f"<b>MO :</b>', pdf_section)
-        self.assertIn('f"<b>FR :</b>', pdf_section)
+        self.assertIn('"Samedi" if service_day.weekday() == 5', pdf_section)
+        self.assertIn('item[\'Monition/P.U. MO\']', pdf_section)
+        self.assertIn('item[\'Monition/P.U. FR\']', pdf_section)
         compile(core, "liturgie_app_core.py", "exec")
 
     def setUp(self):
