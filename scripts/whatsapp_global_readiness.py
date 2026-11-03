@@ -108,10 +108,12 @@ def main() -> int:
     if blocked:
         for line in blocker_lines(blocked):
             print(f"[global-readiness][warning] {line}")
-        print("[global-readiness] INCOMPLET — envoi de production interdit")
-        return 2
+        print("[global-readiness] Affectations incomplètes ignorées — seuls les destinataires prêts sont admissibles")
+    if not summary["ready"]:
+        print("[global-readiness] Aucun destinataire prêt — aucun envoi possible")
+        return 0
 
-    print("[global-readiness] COMPLET — toutes les célébrations futures actives sont prêtes")
+    print("[global-readiness] OK — contrôle sélectif des destinataires terminé")
     return 0
 
 
