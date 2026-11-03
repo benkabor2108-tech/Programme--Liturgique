@@ -69,9 +69,9 @@ class WhatsAppGlobalReadinessTests(unittest.TestCase):
                    "assignments": 2, "ready": 1, "blocked": 1}
         blocked = [{"code": "M3", "date_label": "04/10/2026",
                     "reasons": ["numéro absent"]}]
-        with patch.object(gate, "env", side_effect=lambda key, default="": "configured"), \\
-             patch.object(gate, "load_state_record", return_value=(state, 1, None)), \\
-             patch.object(gate, "evaluate_state", return_value=(summary, blocked)), \\
+        with patch.object(gate, "env", side_effect=lambda key, default="": "configured"), \
+             patch.object(gate, "load_state_record", return_value=(state, 1, None)), \
+             patch.object(gate, "evaluate_state", return_value=(summary, blocked)), \
              patch("sys.argv", ["gate", "--reference-date", "2026-09-15"]):
             self.assertEqual(gate.main(), 0)
 
@@ -79,9 +79,9 @@ class WhatsAppGlobalReadinessTests(unittest.TestCase):
         state = {"whatsapp_automation_authorized": True}
         summary = {"celebrations": 1, "saturdays": 0, "sundays": 1,
                    "assignments": 1, "ready": 0, "blocked": 1}
-        with patch.object(gate, "env", side_effect=lambda key, default="": "configured"), \\
-             patch.object(gate, "load_state_record", return_value=(state, 1, None)), \\
-             patch.object(gate, "evaluate_state", return_value=(summary, [{"code": "M3"}])), \\
+        with patch.object(gate, "env", side_effect=lambda key, default="": "configured"), \
+             patch.object(gate, "load_state_record", return_value=(state, 1, None)), \
+             patch.object(gate, "evaluate_state", return_value=(summary, [{"code": "M3"}])), \
              patch("sys.argv", ["gate", "--reference-date", "2026-09-15"]):
             self.assertEqual(gate.main(), 0)
 
