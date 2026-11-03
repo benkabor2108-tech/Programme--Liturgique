@@ -69,7 +69,8 @@ class WhatsAppUiGuardTests(unittest.TestCase):
         self.assertIn("def next_published_weekend", AUTOMATION)
         self.assertIn("def build_weekend_jobs", AUTOMATION)
         self.assertIn("un seul message regroupe ses services", AUTOMATION)
-        self.assertIn("Week-end incomplet; aucun message envoyé", AUTOMATION)
+        self.assertIn('pending = [j for j in jobs if j["ready"] and not j["already_sent"]]', AUTOMATION)
+        self.assertNotIn("Week-end incomplet; aucun message envoyé", AUTOMATION)
 
 
 if __name__ == "__main__":
