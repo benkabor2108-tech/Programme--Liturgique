@@ -465,11 +465,8 @@ def main() -> int:
             print(f"[dry-run] {job['code']} — {job['name']} — {job['role']}")
         return 0
 
-    # Défense en profondeur : même hors workflow GitHub, aucun envoi partiel
-    # si le prochain week-end contient un contact non prêt.
-    if not_ready:
-        print("[preflight] Week-end incomplet; aucun message envoyé.")
-        return 2
+    # Les contacts incomplets sont exclus de pending et ne sont jamais envoyés.
+    # Leurs avertissements restent visibles dans les logs, sans bloquer les autres.
 
     if not automation_authorized(state):
         print("[preflight] Autorisation principale WhatsApp désactivée; aucun message envoyé.")

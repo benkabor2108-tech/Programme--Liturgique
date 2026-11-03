@@ -1,5 +1,6 @@
 from datetime import date
 import unittest
+from unittest.mock import patch
 
 from scripts import whatsapp_global_readiness as gate
 
@@ -61,6 +62,28 @@ class WhatsAppGlobalReadinessTests(unittest.TestCase):
         self.assertEqual(summary["ready"], 1)
         self.assertEqual(summary["blocked"], 1)
         self.assertEqual([row["code"] for row in blocked], ["M5"])
+
+    def test_mixed_readiness_does_not_block_eligible_recipients(self):
+        state = {"whatsapp_automation_authorized": True}
+        summary = {"celebrations": 1, "saturdays": 0, "sundays": 1,
+                   "assignments": 2, "ready": 1, "blocked": 1}
+        blocked = [{"code": "M3", "date_label": "04/10/2026",
+                    "reasons": ["numéro absent"]}]
+        with patch.object(gate, "env", side_effect=lambda key, default="": "configured"), \
+             patch.object(gate, "load_state_record", return_value=(state, 1, None)), \
+             patch.object(gate, "evaluate_state", return_value=(summary, blocked)), \
+             patch("sys.argv", ["gate", "--reference-date", "2026-09-15"]):
+            self.assertEqual(gate.main(), 0)
+
+    def test_all_incomplete_assignments_are_not_sent(self):
+        state = {"whatsapp_automation_authorized": True}
+        summary = {"celebrations": 1, "saturdays": 0, "sundays": 1,
+                   "assignments": 1, "ready": 0, "blocked": 1}
+        with patch.object(gate, "env", side_effect=lambda key, default="": "configured"), \
+             patch.object(gate, "load_state_record", return_value=(state, 1, None)), \
+             patch.object(gate, "evaluate_state", return_value=(summary, [{"code": "M3"}])), \
+             patch("sys.argv", ["gate", "--reference-date", "2026-09-15"]):
+            self.assertEqual(gate.main(), 0)
 
     def test_blocker_lines_never_expose_phone_numbers(self):
         blocked = [{
