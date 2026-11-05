@@ -52,6 +52,7 @@ jobs:
 
       - name: Run reminder engine
         env:
+          PYTHONPATH: ${{ github.workspace }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_API_KEY: ${{ secrets.SUPABASE_API_KEY }}
           SUPABASE_STATE_KEY: ${{ secrets.SUPABASE_STATE_KEY }}
