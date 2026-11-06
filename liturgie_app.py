@@ -251,6 +251,18 @@ def _runtime_core_source():
         '        if r1 in current and sunday.weekday() == 6:\n            fresh["next_first_language"] = "MO" if str(r1).startswith("F") else "FR"\n',
         "alternance langues pilotée par le dimanche",
     )
+    # Le samedi et le dimanche d'un même week-end gardent le même ordre FR/MO.
+    # Le changement de langue intervient uniquement après la célébration du dimanche.
+    source = _replace_once(
+        source,
+        '''        state["next_first_language"] = "MO" if first == "FR" else "FR"
+''',
+        '''        if sunday.weekday() == 6:
+            state["next_first_language"] = "MO" if first == "FR" else "FR"
+''',
+        "alternance des langues par week-end",
+    )
+
     state_marker = '        "whatsapp_send_log": {},\n        "audit_log": [],\n'
     if source.count(state_marker) < 2:
         raise RuntimeError("Structure d'état inattendue : impossible d'activer la persistance des brouillons liturgiques.")
