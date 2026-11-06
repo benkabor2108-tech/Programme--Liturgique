@@ -39,17 +39,24 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
     working = normalize_state(deepcopy(state))
     dates = weekend_dates(sundays, year, month)
     existing = {row.get("date") for row in working.get("history", []) if is_history_row_active(row)}
-    if existing.intersection(d.isoformat() for d in dates):
+    # Un samedi du mois précédent peut être déjà publié : ne pas le dupliquer.
+    # Toutes les dates appartenant au mois demandé doivent rester libres.
+    blocked = existing.intersection(d.isoformat() for d in dates)
+    preceding = {d.isoformat() for d in dates if d.month != month}
+    if blocked - preceding:
         raise ValueError("Une célébration de cette période est déjà publiée.")
     rng = random.Random(seed + year * 100 + month)
     rows = []
     for sunday in sundays(year, month):
         used_weekend = set()
+        first = working.get("next_first_language", "FR")
         reference = refs.get(sunday.isoformat(), {})
         if not reference.get("r1") or not reference.get("ev"):
             raise ValueError(f"Références bibliques incomplètes pour {sunday.isoformat()}.")
         for service_day, label in ((sunday - timedelta(days=1), "Samedi soir"),
                                    (sunday, "Dimanche")):
+            if service_day.isoformat() in blocked:
+                continue  # Samedi de frontière déjà publié : garder son historique.
             available = {}
             for lang in ("FR", "MO"):
                 available[lang] = [
@@ -82,7 +89,6 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
                     working["people"][c].get("last_service") or "", rng.random()))
                 chosen[lang + "_mon"] = monitions[0]
                 available[lang].remove(monitions[0])
-            first = working.get("next_first_language", "FR")
             r1, r2 = (chosen["FR_read"], chosen["MO_read"]) if first == "FR" else (
                 chosen["MO_read"], chosen["FR_read"])
             codes = {
@@ -111,7 +117,7 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
                 assign(working, codes[role], "MONITION", service_day)
             working["reading_pairs"].append([chosen["FR_read"], chosen["MO_read"]])
             working["monition_pairs"].append([codes["f_mon"], codes["m_mon"]])
-            working["next_first_language"] = "MO" if first == "FR" else "FR"
+        working["next_first_language"] = "MO" if first == "FR" else "FR"
     validate_bilingual_rows(rows)
     working["history"].extend(deepcopy(rows))
     return rows, working
