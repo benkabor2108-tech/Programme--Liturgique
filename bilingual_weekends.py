@@ -50,6 +50,20 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
     for sunday in sundays(year, month):
         used_weekend = set()
         first = working.get("next_first_language", "FR")
+        # Respecter l'ordre et les lecteurs du samedi déjà publié.
+        previous_day = (sunday - timedelta(days=1)).isoformat()
+        if previous_day in blocked:
+            previous_rows = [
+                row for row in working.get("history", [])
+                if is_history_row_active(row) and row.get("date") == previous_day
+            ]
+            if len(previous_rows) != 1:
+                raise ValueError("Samedi de frontière ambigu : vérifiez l'historique.")
+            previous_codes = previous_rows[0].get("codes") or {}
+            if not all(previous_codes.get(key) for key in ("r1", "r2", "f_mon", "m_mon")):
+                raise ValueError("Samedi de frontière incomplet : vérifiez les affectations.")
+            first = "FR" if str(previous_codes["r1"]).startswith("F") else "MO"
+            used_weekend.update(previous_codes.values())
         reference = refs.get(sunday.isoformat(), {})
         if not reference.get("r1") or not reference.get("ev"):
             raise ValueError(f"Références bibliques incomplètes pour {sunday.isoformat()}.")
