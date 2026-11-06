@@ -831,6 +831,8 @@ def full_fresh_start(state):
                     normalize_state, programmable_codes, assign,
                 )
                 _expected_dates = {d.isoformat() for d in weekend_service_days(year, month)}
+                _already_active = {row.get("date") for row in active_history_rows(state.get("history", []))}
+                _expected_dates -= {d for d in _expected_dates if d in _already_active and d[:7] != f"{year:04d}-{month:02d}"}
                 _generated_dates = [str(row.get("date", "")) for row in rows]
                 if len(_generated_dates) != len(_expected_dates) or set(_generated_dates) != _expected_dates:
                     raise RuntimeError(
