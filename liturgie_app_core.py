@@ -1827,11 +1827,11 @@ def pdf_bytes(rows, title="Programme liturgique"):
     )
     header_style = ParagraphStyle(
         "LiturgieHeader", parent=styles["Normal"], fontName="Helvetica-Bold",
-        fontSize=9, leading=11, textColor=colors.white, alignment=TA_CENTER,
+        fontSize=9.2, leading=11.5, textColor=colors.white, alignment=TA_CENTER,
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=8.8, leading=11.2,
+        fontSize=9.0, leading=12.0, textColor=colors.HexColor("#23384B"),
     )
     date_style = ParagraphStyle(
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
@@ -1927,9 +1927,13 @@ def pdf_bytes(rows, title="Programme liturgique"):
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#FFFDF4"), colors.HexColor("#EAF3FA")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#FFFEF8"), colors.HexColor("#EAF3FA")]),
+            ("LINEBELOW", (0, 2), (-1, 2), 0.9, colors.HexColor("#5686A6")),
+            ("LINEBELOW", (0, 4), (-1, 4), 0.9, colors.HexColor("#5686A6")),
+            ("LINEBELOW", (0, 6), (-1, 6), 0.9, colors.HexColor("#5686A6")),
+            ("LINEBELOW", (0, 8), (-1, 8), 0.9, colors.HexColor("#5686A6")),
         ]))
         story.append(table)
         if group_index < len(groups) - 1:
