@@ -1831,7 +1831,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
-        fontSize=9.0, leading=12.0, textColor=colors.HexColor("#23384B"),
+        fontSize=8.8, leading=11.2, textColor=colors.HexColor("#23384B"),
     )
     date_style = ParagraphStyle(
         "LiturgieDate", parent=cell_style, fontName="Helvetica-Bold", alignment=TA_CENTER,
