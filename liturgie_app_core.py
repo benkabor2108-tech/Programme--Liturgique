@@ -1827,7 +1827,7 @@ def pdf_bytes(rows, title="Programme liturgique"):
     )
     header_style = ParagraphStyle(
         "LiturgieHeader", parent=styles["Normal"], fontName="Helvetica-Bold",
-        fontSize=9.2, leading=11.5, textColor=colors.white, alignment=TA_CENTER,
+        fontSize=9, leading=11, textColor=colors.white, alignment=TA_CENTER,
     )
     cell_style = ParagraphStyle(
         "LiturgieCell", parent=styles["Normal"], fontName="Helvetica",
