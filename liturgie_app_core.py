@@ -1266,6 +1266,31 @@ def attendance_summary_rows(state, target_year, target_month):
     return eligibility, rows
 
 
+
+def attendance_monthly_matrix_rows(state, target_year, target_month, eligibility=None):
+    """Tableau de lecture seule : une colonne par répétition du cycle."""
+    eligibility = eligibility or attendance_eligibility(state, target_year, target_month)
+    start_day = date.fromisoformat(eligibility["reference_start"])
+    end_day = date.fromisoformat(eligibility["reference_end"])
+    sheets = attendance_sheets_for_period(state, start_day, end_day)
+    rows = []
+    for code in member_codes(state):
+        info = eligibility["details"].get(code, {})
+        row = {
+            "Nom": state.get("names", {}).get(code, code),
+            "Langue": "Français" if code.startswith("F") else "Mooré",
+        }
+        for sheet_day, sheet in sheets:
+            status = str((sheet.get("statuses", {}) or {}).get(code, "")).upper()
+            row[sheet_day.strftime("%d/%m/%Y")] = status if status in ("P", "J", "A") else "—"
+        row["Total (P + J)"] = info.get("P+J", 0)
+        row["Observation"] = (
+            "Éligible" if info.get("eligible", True) else "Non éligible"
+        ) if eligibility["enforced"] else "À confirmer"
+        rows.append(row)
+    return rows
+
+
 def attendance_sheet_rows(sheet):
     names = sheet.get("names", {}) if isinstance(sheet, dict) else {}
     statuses = sheet.get("statuses", {}) if isinstance(sheet, dict) else {}
@@ -3407,7 +3432,10 @@ with attendance_tab:
             "Il faut au moins 2 feuilles pour activer automatiquement le filtre d'éligibilité."
         )
 
-    with st.expander("Voir le détail P / J / A"):
+    st.markdown("#### Liste mensuelle de présence — " + target_label)
+    st.caption("P = présent · J = absence justifiée comptée · A = absence non justifiée · — = non renseigné. Observation définitive après clôture du cycle et au moins deux feuilles.")
+    st.dataframe(attendance_monthly_matrix_rows(state, target_year, target_month, eligibility), use_container_width=True, hide_index=True)
+    with st.expander("Voir le détail des critères P / J / A"):
         st.dataframe(eligibility_rows, use_container_width=True, hide_index=True)
 
     st.divider()
