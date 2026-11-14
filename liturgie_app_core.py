@@ -1107,6 +1107,23 @@ def save_attendance_sheet(state, saturday, statuses, actor_role, reason=""):
             return False, "La période de saisie est fermée pour les administrateurs adjoints."
     if actor_role == "principal" and not attendance_is_open(saturday) and not str(reason).strip():
         return False, "Un motif est obligatoire pour corriger une feuille hors période."
+    # Une correction par le principal révoque la validation anticipée concernée.
+    for key in list((state.get("attendance_cycle_approvals", {}) or {}).keys()):
+        try:
+            year, month = map(int, key.split("-"))
+            start, end = attendance_reference_period(year, month)
+        except (ValueError, TypeError):
+            continue
+        if start <= saturday <= end:
+            if actor_role != "principal":
+                return False, "Cycle déjà validé : seul l'administrateur principal peut corriger."
+            state["attendance_cycle_approvals"].pop(key, None)
+            state.setdefault("audit_log", []).append({
+                "type": "attendance_cycle_approval_revoked",
+                "date": key, "timestamp": now_ouaga().isoformat(),
+                "actor": "Administrateur principal",
+                "reason": "Correction d'une feuille après validation",
+            })
     sheet, _ = ensure_attendance_sheet(state, saturday, actor=attendance_actor_label(actor_role))
     clean = {}
     for code in sheet.get("members", []):
@@ -1177,13 +1194,57 @@ def restore_attendance_sheet(state, saturday, actor_role):
     return sheet
 
 
+def attendance_cycle_approval_key(year, month):
+    return f"{year:04d}-{month:02d}"
+
+
+def attendance_early_approval_ready(state, year, month, today=None):
+    """Vérifie la clôture anticipée sans attendre le 15 si le dernier samedi est passé."""
+    today = today or now_ouaga().date()
+    start, end = attendance_reference_period(year, month)
+    last_saturday = end - timedelta(days=(end.weekday() - 5) % 7)
+    sheets = attendance_sheets_for_period(state, start, end)
+    if today < last_saturday:
+        return False, "La dernière répétition du cycle n'a pas encore eu lieu."
+    if len(sheets) < 2:
+        return False, "Au moins deux feuilles sont nécessaires."
+    if not any(day == last_saturday for day, _ in sheets):
+        return False, "La feuille de la dernière répétition est absente."
+    for day, sheet in sheets:
+        for code in sheet.get("members", []):
+            if str((sheet.get("statuses", {}) or {}).get(code, "")).upper() not in ("P", "J", "A"):
+                return False, f"Feuille du {day:%d/%m/%Y} incomplète."
+    return True, "Toutes les feuilles du cycle sont renseignées."
+
+
+def approve_attendance_cycle(state, year, month, actor_role):
+    if actor_role != "principal":
+        return False, "Validation réservée à l'administrateur principal."
+    ok, reason = attendance_early_approval_ready(state, year, month)
+    if not ok:
+        return False, reason
+    key = attendance_cycle_approval_key(year, month)
+    stamp = now_ouaga().isoformat()
+    state.setdefault("attendance_cycle_approvals", {})[key] = {
+        "approved_at": stamp, "approved_by": "Administrateur principal"
+    }
+    state.setdefault("audit_log", []).append({
+        "type": "attendance_cycle_approval", "date": key,
+        "timestamp": stamp, "actor": "Administrateur principal",
+        "reason": "Clôture anticipée après la dernière répétition",
+    })
+    return True, "Admissibilité validée pour le programme."
+
+
 def attendance_eligibility(state, target_year, target_month):
     start_day, end_day = attendance_reference_period(target_year, target_month)
     sheets = attendance_sheets_for_period(state, start_day, end_day)
 
     # Le filtre n'est définitif qu'une fois le cycle clôturé le 15.
     today = now_ouaga().date()
-    period_closed = today >= end_day
+    approval_key = attendance_cycle_approval_key(target_year, target_month)
+    early_approved = approval_key in (state.get("attendance_cycle_approvals", {}) or {})
+    period_closed = today >= end_day or early_approved
 
     # Pour éviter de pénaliser une période ancienne ou incomplète, la règle
     # automatique s'active seulement si le cycle est clôturé et qu'au moins
@@ -1233,6 +1294,7 @@ def attendance_eligibility(state, target_year, target_month):
     return {
         "enforced": enforced,
         "period_closed": period_closed,
+        "early_approved": early_approved,
         "reference_start": start_day.isoformat(),
         "reference_end": end_day.isoformat(),
         "sheet_count": len(sheets),
@@ -3404,6 +3466,22 @@ with attendance_tab:
         f"{cycle_label}. Une présence datée exactement du 15 est rattachée au cycle "
         "qui se clôt ce jour-là afin d'éviter tout double comptage."
     )
+
+    if IS_ADMIN and not eligibility.get("period_closed"):
+        ready, ready_reason = attendance_early_approval_ready(state, target_year, target_month)
+        st.caption("Clôture anticipée : après la dernière répétition, toutes les feuilles doivent être complètes.")
+        if not ready:
+            st.caption(ready_reason)
+        if st.button("✅ Valider l'admissibilité du cycle", disabled=not ready,
+                     key="approve_attendance_cycle"):
+            ok, message = approve_attendance_cycle(state, target_year, target_month, "principal")
+            if ok:
+                st.session_state.liturgie_state = state
+                if persist(show_success=False):
+                    st.success(message)
+                    st.rerun()
+            else:
+                st.error(message)
 
     if eligibility["enforced"]:
         eligible_count = sum(
