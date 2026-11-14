@@ -3005,6 +3005,24 @@ home_tab, guide_tab, generate_tab, members_tab, attendance_tab, history_tab = st
 )
 
 with home_tab:
+    st.markdown("""
+    <style>
+    .liturgie-hero {
+      text-align:center; padding:2.1rem 1.5rem; border-radius:22px;
+      background:linear-gradient(120deg,#143a4a 0%,#225e64 52%,#487a70 100%);
+      color:#fff; margin-bottom:1.4rem; box-shadow:0 8px 25px rgba(15,45,55,.13);
+    }
+    .liturgie-hero h2 {color:#fff!important; font-size:clamp(1.5rem,3vw,2.3rem); margin:.25rem 0;}
+    .liturgie-hero p {color:#e9f4ef!important; font-size:1rem; margin:.45rem 0 0;}
+    div[data-testid="stMetric"] {text-align:center; padding:1rem; border:1px solid rgba(95,130,125,.18); border-radius:16px;}
+    div[data-testid="stMetricLabel"],div[data-testid="stMetricValue"] {justify-content:center;}
+    </style>
+    <section class="liturgie-hero">
+      <div style="font-size:2rem">✝️</div>
+      <h2>Bienvenue dans Programme liturgique</h2>
+      <p>Servir la Parole avec fidélité, harmonie et fraternité</p>
+    </section>
+    """, unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     c1.metric("Francophones actifs", len(active_codes(state, "FR")))
     c2.metric("Mooréphones actifs", len(active_codes(state, "MO")))
@@ -3022,7 +3040,7 @@ with home_tab:
         "Règles actives : alternance FR/MO des 1re et 2e lectures ; alternance individuelle "
         "Lecture ↔ Monition/P.U. au prochain passage ; équité des intervalles ; binômes non figés ; "
         "annonces indépendantes et sans cumul de fonction le même dimanche. "
-        "Présences : cycle du 15 au 15 pour préparer le mois suivant ; P et J comptent ; P + J ≥ 2 ; 3 J ou plus = non éligible."
+        "Présences : cycle du 16 au 15 pour préparer le mois suivant ; P et J comptent ; P + J ≥ 2 ; 3 J ou plus = non éligible."
     )
 
     if st.button("🔄 Actualiser depuis Supabase"):
