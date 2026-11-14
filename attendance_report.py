@@ -1,6 +1,6 @@
 """Export PDF A4 des présences mensuelles."""
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4, landscape
@@ -59,53 +59,117 @@ def monthly_attendance_data(state, year, month, today=None):
     rows.sort(key=lambda r:(0 if r["lang"]=="FR" else 1,str(r["name"]).casefold()))
     return sheets, rows
 
+def _next_month(year, month):
+    return (year + 1, 1) if month == 12 else (year, month + 1)
+
+
+def _eligibility_for_next_month(state, year, month, today):
+    """Applique les règles historiques au cycle clôturé le 15 du mois sélectionné."""
+    start_month_end = date(year, month, 1) - timedelta(days=1)
+    start = date(start_month_end.year, start_month_end.month, 16)
+    end = date(year, month, 15)
+    cycle = []
+    for key, sheet in (state.get("attendance", {}) or {}).items():
+        try:
+            day = date.fromisoformat(str((sheet or {}).get("date") or key))
+        except (TypeError, ValueError):
+            continue
+        if start <= day <= end:
+            cycle.append(sheet)
+    enforced = today >= end and len(cycle) >= 2
+    return cycle, enforced, start, end
+
+
 def attendance_pdf_bytes(state, year, month, generated_at=None):
-    generated_at=generated_at or datetime.now()
-    today=generated_at.date()
-    sheets,rows=monthly_attendance_data(state,year,month,today=today)
-    title=f"État des présences — {MONTHS[month-1]} {year}"
-    current=(year,month)==(today.year,today.month)
-    output=io.BytesIO()
-    doc=SimpleDocTemplate(output,pagesize=landscape(A4),leftMargin=8*mm,rightMargin=8*mm,
-        topMargin=8*mm,bottomMargin=8*mm,title=title,author="Programme liturgique")
-    styles=getSampleStyleSheet()
-    title_style=ParagraphStyle("AttendanceTitle",parent=styles["Title"],fontName="Helvetica-Bold",
-        fontSize=15,leading=17,alignment=TA_CENTER,spaceAfter=2*mm)
-    note_style=ParagraphStyle("AttendanceNote",parent=styles["Normal"],fontSize=7.5,leading=9,
-        alignment=TA_CENTER,textColor=colors.HexColor("#4B5563"))
-    head_style=ParagraphStyle("AttendanceHead",parent=styles["Normal"],fontName="Helvetica-Bold",
-        fontSize=7,leading=8,alignment=TA_CENTER)
-    cell_style=ParagraphStyle("AttendanceCell",parent=styles["Normal"],fontSize=7.2,leading=8.5)
-    center_style=ParagraphStyle("AttendanceCenter",parent=cell_style,alignment=TA_CENTER)
-    story=[Paragraph(title,title_style)]
-    state_label="État provisoire du mois en cours" if current else "État du mois écoulé"
-    story.append(Paragraph(f"{state_label} · extrait le {generated_at.strftime('%d/%m/%Y à %H:%M')} · {len(sheets)} feuille(s) enregistrée(s)",note_style))
-    story.append(Spacer(1,3*mm))
-    headers=[Paragraph("Membre",head_style),Paragraph("Groupe",head_style)]
-    headers += [Paragraph(day.strftime("%d/%m"),head_style) for day,_ in sheets]
-    headers += [Paragraph(x,head_style) for x in ("P","J","A","P+J")]
-    data=[headers]
+    generated_at = generated_at or datetime.now()
+    today = generated_at.date()
+    sheets, rows = monthly_attendance_data(state, year, month, today=today)
+    next_year, next_month = _next_month(year, month)
+    cycle, enforced, cycle_start, cycle_end = _eligibility_for_next_month(state, year, month, today)
+    title = f"Liste des présences — {MONTHS[month-1]} {year}"
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(
+        output, pagesize=landscape(A4), leftMargin=8*mm, rightMargin=8*mm,
+        topMargin=8*mm, bottomMargin=8*mm, title=title, author="Programme liturgique"
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("AttendanceTitle", parent=styles["Title"],
+        fontName="Helvetica-Bold", fontSize=14, leading=17,
+        alignment=TA_CENTER, spaceAfter=2*mm)
+    note_style = ParagraphStyle("AttendanceNote", parent=styles["Normal"],
+        fontSize=7.2, leading=9, alignment=TA_CENTER,
+        textColor=colors.HexColor("#4B5563"))
+    head_style = ParagraphStyle("AttendanceHead", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=7, leading=9, alignment=TA_CENTER)
+    cell_style = ParagraphStyle("AttendanceCell", parent=styles["Normal"],
+        fontSize=7.2, leading=9)
+    center_style = ParagraphStyle("AttendanceCenter", parent=cell_style, alignment=TA_CENTER)
+
+    story = [Paragraph(title, title_style)]
+    story.append(Paragraph(
+        f"État extrait le {generated_at.strftime('%d/%m/%Y à %H:%M')} · "
+        f"{len(sheets)} feuille(s) pour le mois affiché · "
+        f"Éligibilité pour {MONTHS[next_month-1]} {next_year}",
+        note_style
+    ))
+    story.append(Spacer(1, 3*mm))
+
+    headers = [Paragraph("Nom", head_style), Paragraph("Langue", head_style)]
+    headers += [Paragraph(day.strftime("%d/%m"), head_style) for day, _ in sheets]
+    headers += [Paragraph("Total (P + J)", head_style), Paragraph("Observation", head_style)]
+    data = [headers]
     for row in rows:
-        data.append([Paragraph(str(row["name"]),cell_style),
-            Paragraph("Francophone" if row["lang"]=="FR" else "Mooréphone",center_style),
-            *[Paragraph(v,center_style) for v in row["statuses"]],
-            *[Paragraph(str(row[x]),center_style) for x in ("P","J","A","P+J")]])
-    available=277*mm; member_w=52*mm; group_w=26*mm; total_w=12*mm
-    date_w=max(14*mm,(available-member_w-group_w-4*total_w)/max(1,len(sheets)))
-    widths=[member_w,group_w]+[date_w]*len(sheets)+[total_w]*4
-    table=Table(data,colWidths=widths,repeatRows=1,hAlign="CENTER")
+        code = row["code"]
+        p = j = 0
+        for sheet in cycle:
+            status = str((sheet.get("statuses", {}) or {}).get(code, "")).upper()
+            p += status == "P"
+            j += status == "J"
+        eligible = p + j >= 2 and j < 3
+        observation = ("Éligible" if eligible else "Non éligible") if enforced else "À confirmer"
+        data.append([
+            Paragraph(str(row["name"]), cell_style),
+            Paragraph("Français" if row["lang"] == "FR" else "Mooré", center_style),
+            *[Paragraph(v, center_style) for v in row["statuses"]],
+            Paragraph(str(row["P+J"]), center_style),
+            Paragraph(observation, center_style),
+        ])
+
+    available = 277*mm
+    name_w, lang_w, total_w, observation_w = 59*mm, 27*mm, 26*mm, 35*mm
+    date_count = len(sheets)
+    date_w = (available - name_w - lang_w - total_w - observation_w) / max(1, date_count)
+    widths = [name_w, lang_w] + [date_w]*date_count + [total_w, observation_w]
+    table = Table(data, colWidths=widths, repeatRows=1, hAlign="CENTER")
     table.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#DCEAF7")),
-        ("TEXTCOLOR",(0,0),(-1,0),colors.HexColor("#1F2937")),
-        ("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#9CA3AF")),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),
-        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8FAFC")]),
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#DCEAF7")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.HexColor("#1F2937")),
+        ("GRID", (0,0), (-1,-1), 0.4, colors.HexColor("#9CA3AF")),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 3),
+        ("RIGHTPADDING", (0,0), (-1,-1), 3),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#F8FAFC")]),
     ]))
-    story += [table,Spacer(1,3*mm),Paragraph(
-        "Légende : P = présent · J = absence justifiée (comptée comme présence) · A = absence non justifiée · — = aucun statut enregistré. P+J = total des présences comptabilisées.",
-        note_style)]
+    story.extend([table, Spacer(1, 3*mm)])
+    story.append(Paragraph(
+        "P = présent · J = absence justifiée comptabilisée · A = absence non justifiée · "
+        "— = non renseigné. Le total est celui du mois affiché.",
+        note_style
+    ))
+    story.append(Paragraph(
+        f"L'observation pour {MONTHS[next_month-1]} {next_year} est calculée sur le cycle "
+        f"du {cycle_start.strftime('%d/%m/%Y')} au {cycle_end.strftime('%d/%m/%Y')} : "
+        "P + J ≥ 2 et moins de 3 J. "
+        + ("Cycle clôturé, critères appliqués." if enforced else
+           "À confirmer : cycle non clôturé ou moins de 2 feuilles enregistrées."),
+        note_style
+    ))
     if not sheets:
-        story += [Spacer(1,2*mm),Paragraph("Aucune feuille de présence n'est enregistrée pour ce mois à la date de l'extraction.",note_style)]
-    doc.build(story); output.seek(0); return output.getvalue()
+        story.append(Paragraph(
+            "Aucune feuille de présence enregistrée pour le mois affiché.", note_style
+        ))
+    doc.build(story)
+    output.seek(0)
+    return output.getvalue()
