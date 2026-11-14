@@ -189,7 +189,7 @@ def attendance_pdf_bytes(state, year, month, generated_at=None):
         note_style
     ))
     story.append(Paragraph(
-        f"L'observation pour {MONTHS[next_month-1]} {next_year} est calculée sur le cycle "
+        f"L'observation pour {MONTHS[month-1]} {year} est calculée sur le cycle "
         f"du {cycle_start.strftime('%d/%m/%Y')} au {cycle_end.strftime('%d/%m/%Y')} : "
         "P + J ≥ 2 et moins de 3 J. "
         + ("Cycle clôturé, critères appliqués." if enforced else
