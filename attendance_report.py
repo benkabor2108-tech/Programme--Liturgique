@@ -76,17 +76,50 @@ def _eligibility_for_next_month(state, year, month, today):
             continue
         if start <= day <= end:
             cycle.append(sheet)
-    enforced = today >= end and len(cycle) >= 2
+    approval_key = _next_month(year, month)
+    approval_id = f"{approval_key[0]:04d}-{approval_key[1]:02d}"
+    approved = approval_id in (state.get("attendance_cycle_approvals", {}) or {})
+    enforced = (today >= end or approved) and len(cycle) >= 2
     return cycle, enforced, start, end
 
 
 def attendance_pdf_bytes(state, year, month, generated_at=None):
     generated_at = generated_at or datetime.now()
     today = generated_at.date()
-    sheets, rows = monthly_attendance_data(state, year, month, today=today)
-    next_year, next_month = _next_month(year, month)
-    cycle, enforced, cycle_start, cycle_end = _eligibility_for_next_month(state, year, month, today)
-    title = f"Liste des présences — {MONTHS[month-1]} {year}"
+    # Le mois sélectionné est celui à programmer ; la période se termine le 15 précédent.
+    previous = date(year, month, 1) - timedelta(days=1)
+    cycle, enforced, cycle_start, cycle_end = _eligibility_for_next_month(
+        state, previous.year, previous.month, today
+    )
+    sheets = []
+    for key, sheet in (state.get("attendance", {}) or {}).items():
+        try:
+            day = date.fromisoformat(str((sheet or {}).get("date") or key))
+        except (TypeError, ValueError):
+            continue
+        if cycle_start <= day <= cycle_end and day <= today:
+            sheets.append((day, sheet))
+    sheets.sort(key=lambda item: item[0])
+    roster = state.get("roster", {}) or {}
+    codes = list(dict.fromkeys(
+        list(roster.get("FR", [])) + list(roster.get("MO", []))
+        + [code for _, sheet in sheets for code in (sheet.get("members", []) or [])]
+    ))
+    rows = []
+    for code in codes:
+        statuses = []
+        for _, sheet in sheets:
+            value = str((sheet.get("statuses", {}) or {}).get(code, "")).upper()
+            statuses.append(value if value in ("P", "J", "A") else "—")
+        name = (state.get("names", {}) or {}).get(code, code)
+        for _, sheet in reversed(sheets):
+            name = (sheet.get("names", {}) or {}).get(code, name)
+        rows.append({"code": code, "name": name,
+                     "lang": "FR" if str(code).startswith("F") else "MO",
+                     "statuses": statuses,
+                     "P+J": sum(v in ("P", "J") for v in statuses)})
+    rows.sort(key=lambda r: (0 if r["lang"] == "FR" else 1, str(r["name"]).casefold()))
+    title = f"Liste des présences — Programme de {MONTHS[month-1]} {year}"
     output = io.BytesIO()
     doc = SimpleDocTemplate(
         output, pagesize=landscape(A4), leftMargin=8*mm, rightMargin=8*mm,
@@ -108,8 +141,8 @@ def attendance_pdf_bytes(state, year, month, generated_at=None):
     story = [Paragraph(title, title_style)]
     story.append(Paragraph(
         f"État extrait le {generated_at.strftime('%d/%m/%Y à %H:%M')} · "
-        f"{len(sheets)} feuille(s) pour le mois affiché · "
-        f"Éligibilité pour {MONTHS[next_month-1]} {next_year}",
+        f"{len(sheets)} feuille(s) du cycle · "
+        f"Cycle du {cycle_start.strftime('%d/%m/%Y')} au {cycle_end.strftime('%d/%m/%Y')}",
         note_style
     ))
     story.append(Spacer(1, 3*mm))
@@ -128,7 +161,7 @@ def attendance_pdf_bytes(state, year, month, generated_at=None):
         eligible = p + j >= 2 and j < 3
         observation = ("Éligible" if eligible else "Non éligible") if enforced else "À confirmer"
         data.append([
-            Paragraph(str(row["name"]), cell_style),
+            Paragraph(str(row["name"]), center_style),
             Paragraph("Français" if row["lang"] == "FR" else "Mooré", center_style),
             *[Paragraph(v, center_style) for v in row["statuses"]],
             Paragraph(str(row["P+J"]), center_style),
@@ -155,11 +188,11 @@ def attendance_pdf_bytes(state, year, month, generated_at=None):
     story.extend([table, Spacer(1, 3*mm)])
     story.append(Paragraph(
         "P = présent · J = absence justifiée comptabilisée · A = absence non justifiée · "
-        "— = non renseigné. Le total est celui du mois affiché.",
+        "— = non renseigné. Le total est celui du cycle de programmation.",
         note_style
     ))
     story.append(Paragraph(
-        f"L'observation pour {MONTHS[next_month-1]} {next_year} est calculée sur le cycle "
+        f"L'observation pour {MONTHS[month-1]} {year} est calculée sur le cycle "
         f"du {cycle_start.strftime('%d/%m/%Y')} au {cycle_end.strftime('%d/%m/%Y')} : "
         "P + J ≥ 2 et moins de 3 J. "
         + ("Cycle clôturé, critères appliqués." if enforced else
@@ -168,7 +201,7 @@ def attendance_pdf_bytes(state, year, month, generated_at=None):
     ))
     if not sheets:
         story.append(Paragraph(
-            "Aucune feuille de présence enregistrée pour le mois affiché.", note_style
+            "Aucune feuille de présence enregistrée pour ce cycle.", note_style
         ))
     doc.build(story)
     output.seek(0)
