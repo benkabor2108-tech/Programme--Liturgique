@@ -76,7 +76,10 @@ def _eligibility_for_next_month(state, year, month, today):
             continue
         if start <= day <= end:
             cycle.append(sheet)
-    enforced = today >= end and len(cycle) >= 2
+    approval_key = _next_month(year, month)
+    approval_id = f"{approval_key[0]:04d}-{approval_key[1]:02d}"
+    approved = approval_id in (state.get("attendance_cycle_approvals", {}) or {})
+    enforced = (today >= end or approved) and len(cycle) >= 2
     return cycle, enforced, start, end
 
 
@@ -158,7 +161,7 @@ def attendance_pdf_bytes(state, year, month, generated_at=None):
         eligible = p + j >= 2 and j < 3
         observation = ("Éligible" if eligible else "Non éligible") if enforced else "À confirmer"
         data.append([
-            Paragraph(str(row["name"]), cell_style),
+            Paragraph(str(row["name"]), center_style),
             Paragraph("Français" if row["lang"] == "FR" else "Mooré", center_style),
             *[Paragraph(v, center_style) for v in row["statuses"]],
             Paragraph(str(row["P+J"]), center_style),
