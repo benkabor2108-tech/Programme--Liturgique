@@ -701,20 +701,23 @@ def full_fresh_start(state):
         '''    st.divider()
     if IS_ADMIN or IS_ADJOINT:
         st.markdown("### 🖨️ Extraire l'état mensuel des présences en PDF")
-        _attendance_months = available_attendance_months(state, today=_now.date())
+        _attendance_cycle_months = available_attendance_months(state, today=_now.date())
+        _attendance_months = [
+            (ym[0] + 1, 1) if ym[1] == 12 else (ym[0], ym[1] + 1)
+            for ym in _attendance_cycle_months
+        ]
         _attendance_period = st.selectbox(
-            "Mois à extraire",
+            "Mois du programme à préparer",
             _attendance_months,
             format_func=lambda ym: f"{MONTHS[ym[1] - 1]} {ym[0]}",
-            key="attendance_pdf_month",
+            key="attendance_pdf_programming_month",
         )
         _attendance_year, _attendance_month = _attendance_period
-        _attendance_is_current = (_attendance_year, _attendance_month) == (_now.year, _now.month)
         st.caption(
-            "Extraction réservée à l'administrateur principal et aux administrateurs adjoints. "
-            "Le PDF reprend l'état réellement enregistré au moment de l'extraction. "
-            + ("Pour le mois en cours, il est indiqué comme provisoire." if _attendance_is_current
-               else "Pour un mois écoulé, il constitue l'état enregistré de ce mois.")
+            "Le PDF reprend les répétitions du 16 de l'avant-dernier mois "
+            "au 15 du mois précédent, comme pour la programmation. "
+            "L'admissibilité reste à confirmer tant que le cycle n'est pas clôturé "
+            "ou que moins de deux feuilles sont enregistrées."
         )
         st.download_button(
             "📄 Télécharger l'état des présences — PDF A4",
