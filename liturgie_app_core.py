@@ -1160,7 +1160,30 @@ def attendance_is_ignored(state, saturday):
     return saturday.isoformat() in set(state.get("attendance_ignored", []) or [])
 
 
+def revoke_cycle_approval_for_sheet(state, saturday, actor_role):
+    """Toute modification d'une feuille approuvée invalide son homologation."""
+    for key in list((state.get("attendance_cycle_approvals", {}) or {}).keys()):
+        try:
+            year, month = map(int, key.split("-"))
+            start, end = attendance_reference_period(year, month)
+        except (ValueError, TypeError):
+            continue
+        if start <= saturday <= end:
+            if actor_role != "principal":
+                return False
+            state["attendance_cycle_approvals"].pop(key, None)
+            state.setdefault("audit_log", []).append({
+                "type": "attendance_cycle_approval_revoked",
+                "date": key, "timestamp": now_ouaga().isoformat(),
+                "actor": "Administrateur principal",
+                "reason": "Modification d'une feuille après validation",
+            })
+    return True
+
+
 def delete_attendance_sheet(state, saturday, actor_role, reason="Remise à zéro"): 
+    if not revoke_cycle_approval_for_sheet(state, saturday, actor_role):
+        return False, "Cycle validé : modification réservée au principal."
     key = attendance_sheet_key(saturday)
     removed = state.setdefault("attendance", {}).pop(key, None)
     ignored = state.setdefault("attendance_ignored", [])
@@ -1179,6 +1202,8 @@ def delete_attendance_sheet(state, saturday, actor_role, reason="Remise à zéro
 
 
 def restore_attendance_sheet(state, saturday, actor_role):
+    if not revoke_cycle_approval_for_sheet(state, saturday, actor_role):
+        return None
     key = attendance_sheet_key(saturday)
     state["attendance_ignored"] = [k for k in (state.get("attendance_ignored", []) or []) if k != key]
     sheet, _ = ensure_attendance_sheet(state, saturday, actor=attendance_actor_label(actor_role))
