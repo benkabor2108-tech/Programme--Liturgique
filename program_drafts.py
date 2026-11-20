@@ -42,7 +42,7 @@ def validate_draft(state, draft, sundays, programmable_codes):
         monition_text = str(row.get("Monition + P.U.", "")).replace(chr(92) + "n", chr(10))
         monition_lines = monition_text.splitlines()
         other_lang = "MO" if first_lang == "FR" else "FR"
-        if (len(monition_lines) != 2 or
+        if "Monition + P.U." in row and (len(monition_lines) != 2 or
                 not monition_lines[0].startswith(first_lang + " : ") or
                 not monition_lines[1].startswith(other_lang + " : ")):
             raise ValueError("Ordre des monitions incompatible avec les lectures.")
