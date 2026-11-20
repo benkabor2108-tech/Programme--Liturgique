@@ -30,10 +30,22 @@ def validate_draft(state, draft, sundays, programmable_codes):
     if any(row.get("date") in set(expected) and is_history_row_active(row) for row in state.get("history", [])):
         raise ValueError("Ce mois est déjà publié. Aucune modification n'a été enregistrée.")
     weekend_codes = {}
+    weekend_first_languages = {}
     for row in rows:
         sunday_key = row.get("liturgical_date", row["date"])
         weekend_codes.setdefault(sunday_key, []).extend(row.get("codes", {}).values())
         codes = row.get("codes", {})
+        first_lang = "FR" if str(codes.get("r1", "")).startswith("F") else "MO"
+        prior = weekend_first_languages.setdefault(sunday_key, first_lang)
+        if prior != first_lang:
+            raise ValueError(f"Ordre des lectures différent entre samedi et dimanche ({sunday_key}).")
+        monition_text = str(row.get("Monition + P.U.", "")).replace(chr(92) + "n", chr(10))
+        monition_lines = monition_text.splitlines()
+        other_lang = "MO" if first_lang == "FR" else "FR"
+        if "Monition + P.U." in row and (len(monition_lines) != 2 or
+                not monition_lines[0].startswith(first_lang + " : ") or
+                not monition_lines[1].startswith(other_lang + " : ")):
+            raise ValueError("Ordre des monitions incompatible avec les lectures.")
         if set(codes) not in (set(ROLES), set(LEGACY_ROLES)) or len(set(codes.values())) != len(codes):
             raise ValueError("Chaque célébration doit avoir ses intervenants distincts.")
         d = date.fromisoformat(row.get("liturgical_date", row["date"]))
