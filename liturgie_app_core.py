@@ -3984,51 +3984,6 @@ with history_tab:
     st.subheader("🕘 Historique")
     history = state.get("history", [])
     if history:
-        # A published month must be exported from persisted, non-cancelled history,
-        # never from the potentially stale last_rows session preview.
-        published_history = [
-            row for row in history
-            if row.get("history_status") != "cancelled"
-        ]
-        available_months = sorted({
-            str(row.get("date", ""))[:7]
-            for row in published_history
-            if len(str(row.get("date", ""))) >= 7
-        }, reverse=True)
-        if available_months:
-            selected_month = st.selectbox(
-                "Mois du programme publié à télécharger",
-                available_months,
-                key="published_month_export",
-            )
-            published_rows = sorted(
-                [row for row in published_history
-                 if str(row.get("date", "")).startswith(selected_month + "-")],
-                key=lambda row: str(row.get("date", "")),
-            )
-            st.caption(
-                f"Version publiée active : {len(published_rows)} célébration(s). "
-                "Les versions annulées sont exclues de cet export."
-            )
-            try:
-                from bilingual_weekends import validate_bilingual_rows
-                validate_bilingual_rows(published_rows)
-            except (ValueError, KeyError) as exc:
-                st.error(
-                    "Export bloqué : ordre des langues incohérent dans le programme publié. "
-                    + str(exc)
-                )
-            else:
-                st.download_button(
-                    "🖨️ Télécharger le programme publié — PDF corrigé",
-                    data=pdf_bytes(
-                        published_rows,
-                        title=f"Programme liturgique - {selected_month}",
-                    ),
-                    file_name=f"programme_liturgique_{selected_month.replace('-', '_')}.pdf",
-                    mime="application/pdf",
-                    key="published_month_pdf",
-                )
         show_mobile_program(history)
         with st.expander("🖥️ Tableau complet de l'historique"):
             st.dataframe(flat_rows(history), use_container_width=True, hide_index=True)
