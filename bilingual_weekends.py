@@ -8,6 +8,7 @@ from history_protection import is_history_row_active
 
 def validate_bilingual_rows(rows):
     """Refuse toute célébration incomplète avant son enregistrement."""
+    weekend_languages = {}
     for row in rows:
         codes = row.get("codes") or {}
         required = ("r1", "r2", "f_mon", "m_mon")
@@ -17,6 +18,11 @@ def validate_bilingual_rows(rows):
                 or not codes["f_mon"].startswith("F")
                 or not codes["m_mon"].startswith("M")):
             raise ValueError(f"Langues des affectations incorrectes pour {row.get('date', '?')}.")
+        weekend_key = row.get("liturgical_date")
+        first_lang = "FR" if codes["r1"].startswith("F") else "MO"
+        if weekend_key in weekend_languages and weekend_languages[weekend_key] != first_lang:
+            raise ValueError(f"Ordre des langues incohérent pour le week-end du {weekend_key}.")
+        weekend_languages[weekend_key] = first_lang
         if len({codes[key] for key in required}) != 4:
             raise ValueError(f"Intervenants en double pour {row.get('date', '?')}.")
         monitions = row.get("Monition + P.U.", "")
@@ -43,7 +49,9 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
         raise ValueError("Une célébration de cette période est déjà publiée.")
     rng = random.Random(seed + year * 100 + month)
     rows = []
+    previous_pairs = {frozenset(pair) for pair in working.get("reading_pairs", []) if len(pair) == 2}
     for sunday in sundays(year, month):
+        first = working.get("next_first_language", "FR")
         used_weekend = set()
         reference = refs.get(sunday.isoformat(), {})
         if not reference.get("r1") or not reference.get("ev"):
@@ -68,7 +76,10 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
                            if working["people"][c].get("next_role") in (None, "LECTURE")]
                 if not readers:
                     raise ValueError(f"Aucun lecteur {lang} compatible avec l'alternance.")
+                other_lang = "MO" if lang == "FR" else "FR"
+                partner = chosen.get(other_lang + "_read")
                 readers.sort(key=lambda c: (
+                    int(partner is not None and frozenset((c, partner)) in previous_pairs),
                     working["people"][c].get("reading_count", 0),
                     working["people"][c].get("last_service") or "", rng.random()))
                 chosen[lang + "_read"] = readers[0]
@@ -82,7 +93,6 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
                     working["people"][c].get("last_service") or "", rng.random()))
                 chosen[lang + "_mon"] = monitions[0]
                 available[lang].remove(monitions[0])
-            first = working.get("next_first_language", "FR")
             r1, r2 = (chosen["FR_read"], chosen["MO_read"]) if first == "FR" else (
                 chosen["MO_read"], chosen["FR_read"])
             codes = {
@@ -110,8 +120,9 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
             for role in ("f_mon", "m_mon"):
                 assign(working, codes[role], "MONITION", service_day)
             working["reading_pairs"].append([chosen["FR_read"], chosen["MO_read"]])
+            previous_pairs.add(frozenset((chosen["FR_read"], chosen["MO_read"])))
             working["monition_pairs"].append([codes["f_mon"], codes["m_mon"]])
-            working["next_first_language"] = "MO" if first == "FR" else "FR"
+        working["next_first_language"] = "MO" if first == "FR" else "FR"
     validate_bilingual_rows(rows)
     working["history"].extend(deepcopy(rows))
     return rows, working
