@@ -327,6 +327,19 @@ def save_remote_state(state):
         )
 
     try:
+        from bilingual_weekends import validate_bilingual_rows
+        grouped = {}
+        for row in active_history_rows(state.get("history", [])):
+            key = row.get("liturgical_date")
+            if key:
+                grouped.setdefault(str(key), []).append(row)
+        for weekend_rows in grouped.values():
+            if len(weekend_rows) == 2:
+                validate_bilingual_rows(weekend_rows)
+    except (ValueError, KeyError) as exc:
+        return False, "Sauvegarde bloquée : langues incohérentes. " + str(exc)
+
+    try:
         new_revision = save_state_if_revision(
             url,
             api_key,
