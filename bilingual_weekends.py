@@ -28,7 +28,9 @@ def validate_bilingual_rows(rows):
         monitions = row.get("Monition + P.U.", "")
         expected_first = "FR" if codes["r1"].startswith("F") else "MO"
         expected_second = "MO" if expected_first == "FR" else "FR"
-        lines = monitions.splitlines()
+        # Les lignes peuvent être séparées par un saut réel ou par le texte \\n.
+        normalized_monitions = monitions.replace(chr(92) + "n", chr(10))
+        lines = normalized_monitions.splitlines()
         if (len(lines) != 2 or not lines[0].startswith(expected_first + " : ")
                 or not lines[1].startswith(expected_second + " : ")):
             raise ValueError("Ordre des monitions différent des lectures.")
