@@ -2230,7 +2230,7 @@ def show_mobile_program(rows):
                 [f"• FR : {item['Monition/P.U. FR'] or '—'}",
                  f"• MO : {item['Monition/P.U. MO'] or '—'}"]
             )
-            st.markdown("**Monition + P.U.**  " + chr(10) + "  ".join(monition_lines))
+            st.markdown("**Monition + P.U.**  " + chr(10) + ("  " + chr(10)).join(monition_lines))
             st.markdown(
                 f"**Annonces**  \n"
                 f"• FR : {item['Annonces FR'] or '—'}  \n"
