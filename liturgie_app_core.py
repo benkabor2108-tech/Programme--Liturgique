@@ -2222,11 +2222,15 @@ def show_mobile_program(rows):
                 f"• 1re : {item['Lecteur 1'] or '—'}  \n"
                 f"• 2e : {item['Lecteur 2'] or '—'}"
             )
-            st.markdown(
-                f"**Monition + P.U.**  \n"
-                f"• FR : {item['Monition/P.U. FR'] or '—'}  \n"
-                f"• MO : {item['Monition/P.U. MO'] or '—'}"
+            first_lang = "MO" if str(item.get("Lecteur 1", "")).lstrip().startswith("MO") else "FR"
+            monition_lines = (
+                [f"• MO : {item['Monition/P.U. MO'] or '—'}",
+                 f"• FR : {item['Monition/P.U. FR'] or '—'}"]
+                if first_lang == "MO" else
+                [f"• FR : {item['Monition/P.U. FR'] or '—'}",
+                 f"• MO : {item['Monition/P.U. MO'] or '—'}"]
             )
+            st.markdown("**Monition + P.U.**  " + chr(10) + "  ".join(monition_lines))
             st.markdown(
                 f"**Annonces**  \n"
                 f"• FR : {item['Annonces FR'] or '—'}  \n"

@@ -58,6 +58,17 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
     rng = random.Random(seed + year * 100 + month)
     rows = []
     previous_pairs = {frozenset(pair) for pair in working.get("reading_pairs", []) if len(pair) == 2}
+    # Continue alternation from the latest active published weekend, even across years.
+    active_previous = [
+        row for row in working.get("history", [])
+        if is_history_row_active(row)
+        and str(row.get("liturgical_date", "")) < dates[0].isoformat()
+        and (row.get("codes") or {}).get("r1")
+    ]
+    if active_previous:
+        last = max(active_previous, key=lambda row: str(row.get("liturgical_date", "")))
+        last_first = "FR" if last["codes"]["r1"].startswith("F") else "MO"
+        working["next_first_language"] = "MO" if last_first == "FR" else "FR"
     for sunday in sundays(year, month):
         first = working.get("next_first_language", "FR")
         used_weekend = set()
