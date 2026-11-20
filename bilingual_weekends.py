@@ -26,6 +26,12 @@ def validate_bilingual_rows(rows):
         if len({codes[key] for key in required}) != 4:
             raise ValueError(f"Intervenants en double pour {row.get('date', '?')}.")
         monitions = row.get("Monition + P.U.", "")
+        expected_first = "FR" if codes["r1"].startswith("F") else "MO"
+        expected_second = "MO" if expected_first == "FR" else "FR"
+        lines = monitions.splitlines()
+        if (len(lines) != 2 or not lines[0].startswith(expected_first + " : ")
+                or not lines[1].startswith(expected_second + " : ")):
+            raise ValueError("Ordre des monitions différent des lectures.")
         if not ("FR : " in monitions and "MO : " in monitions):
             raise ValueError(f"Monitions bilingues manquantes pour {row.get('date', '?')}.")
         if row.get("Annonces") or codes.get("f_ann") or codes.get("m_ann"):
@@ -107,7 +113,9 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
                 "liturgical_date": sunday.isoformat(),
                 "Références": f"1re : {reference['r1']}\\n2e : {reference.get('r2', '')}\\nÉv. : {reference['ev']}",
                 "Lecteurs": f"1re ({first}) : {names[r1]}\\n2e ({'MO' if first == 'FR' else 'FR'}) : {names[r2]}",
-                "Monition + P.U.": f"FR : {names[codes['f_mon']]}\\nMO : {names[codes['m_mon']]}",
+                "Monition + P.U.": (f"FR : {names[codes['f_mon']]}\\nMO : {names[codes['m_mon']]}"
+                                     if first == "FR" else
+                                     f"MO : {names[codes['m_mon']]}\\nFR : {names[codes['f_mon']]}"),
 
                 "Source références": reference.get("source", ""),
                 "Source URL": reference.get("source_url", ""),
