@@ -526,6 +526,35 @@ def full_fresh_start(state):
     history = active_history_rows(full_history)
     cancelled_history = cancelled_history_rows(full_history)
     if history:
+        available_months = sorted({
+            str(row.get("date", ""))[:7]
+            for row in history
+            if len(str(row.get("date", ""))) >= 7
+        }, reverse=True)
+        if available_months:
+            selected_month = st.selectbox(
+                "Mois du programme publié à télécharger",
+                available_months,
+                key="published_month_export",
+            )
+            published_rows = sorted(
+                [row for row in history
+                 if str(row.get("date", "")).startswith(selected_month + "-")],
+                key=lambda row: str(row.get("date", "")),
+            )
+            try:
+                from bilingual_weekends import validate_bilingual_rows
+                validate_bilingual_rows(published_rows)
+            except (ValueError, KeyError) as exc:
+                st.error("Export PDF bloqué : ordre des langues incohérent. " + str(exc))
+            else:
+                st.download_button(
+                    "🖨️ Télécharger le programme publié — PDF corrigé",
+                    data=pdf_bytes(published_rows, title=f"Programme liturgique - {selected_month}"),
+                    file_name=f"programme_liturgique_{selected_month.replace('-', '_')}.pdf",
+                    mime="application/pdf",
+                    key="published_month_pdf",
+                )
         show_mobile_program(history)
         with st.expander("🖥️ Tableau complet de l'historique actif"):
             st.dataframe(flat_rows(history), use_container_width=True, hide_index=True)
