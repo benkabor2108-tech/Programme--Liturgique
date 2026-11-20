@@ -3761,7 +3761,8 @@ with generate_tab:
                         row["Références"] = st.text_area("Références", row.get("Références", ""), key="ref_" + draft_id + row["date"])
                         names = state["names"]
                         row["Lecteurs"] = "1re (" + ("FR" if codes["r1"].startswith("F") else "MO") + ") : " + names[codes["r1"]] + "\n2e (" + ("FR" if codes["r2"].startswith("F") else "MO") + ") : " + names[codes["r2"]]
-                        row["Monition + P.U."] = "FR : " + names[codes["f_mon"]] + "\nMO : " + names[codes["m_mon"]]
+                        monition_order = ("FR", "MO") if codes["r1"].startswith("F") else ("MO", "FR")
+                        row["Monition + P.U."] = "\n".join(lang + " : " + names[codes["f_mon" if lang == "FR" else "m_mon"]] for lang in monition_order)
                         row.pop("Annonces", None)
                     save_d = st.form_submit_button("Enregistrer les modifications du projet")
                 if save_d:
