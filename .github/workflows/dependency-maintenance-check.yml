@@ -23,7 +23,7 @@ jobs:
           from reportlab.pdfgen import canvas
           from reportlab.platypus import SimpleDocTemplate, Table
           assert xlsxwriter.__version__ == '3.3.4'
-          assert reportlab.Version == '5.1.1'
+          assert reportlab.Version == '5.1.2'
           rows = [['Lecteur', 'Présence'], ['Échantillon', 'Éligible']]
           x = io.BytesIO()
           with xlsxwriter.Workbook(x, {'in_memory': True}) as w:
