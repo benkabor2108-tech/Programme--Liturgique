@@ -53,7 +53,11 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
     working = normalize_state(deepcopy(state))
     dates = weekend_dates(sundays, year, month)
     existing = {row.get("date") for row in working.get("history", []) if is_history_row_active(row)}
-    if existing.intersection(d.isoformat() for d in dates):
+    # Un samedi du mois précédent peut être déjà publié : ne pas le dupliquer.
+    # Toutes les dates appartenant au mois demandé doivent rester libres.
+    blocked = existing.intersection(d.isoformat() for d in dates)
+    preceding = {d.isoformat() for d in dates if d.month != month}
+    if blocked - preceding:
         raise ValueError("Une célébration de cette période est déjà publiée.")
     rng = random.Random(seed + year * 100 + month)
     rows = []
@@ -72,11 +76,28 @@ def generate_bilingual_weekends(state, year, month, refs, seed, sundays,
     for sunday in sundays(year, month):
         first = working.get("next_first_language", "FR")
         used_weekend = set()
+        first = working.get("next_first_language", "FR")
+        # Respecter l'ordre et les lecteurs du samedi déjà publié.
+        previous_day = (sunday - timedelta(days=1)).isoformat()
+        if previous_day in blocked:
+            previous_rows = [
+                row for row in working.get("history", [])
+                if is_history_row_active(row) and row.get("date") == previous_day
+            ]
+            if len(previous_rows) != 1:
+                raise ValueError("Samedi de frontière ambigu : vérifiez l'historique.")
+            previous_codes = previous_rows[0].get("codes") or {}
+            if not all(previous_codes.get(key) for key in ("r1", "r2", "f_mon", "m_mon")):
+                raise ValueError("Samedi de frontière incomplet : vérifiez les affectations.")
+            first = "FR" if str(previous_codes["r1"]).startswith("F") else "MO"
+            used_weekend.update(previous_codes.values())
         reference = refs.get(sunday.isoformat(), {})
         if not reference.get("r1") or not reference.get("ev"):
             raise ValueError(f"Références bibliques incomplètes pour {sunday.isoformat()}.")
         for service_day, label in ((sunday - timedelta(days=1), "Samedi soir"),
                                    (sunday, "Dimanche")):
+            if service_day.isoformat() in blocked:
+                continue  # Samedi de frontière déjà publié : garder son historique.
             available = {}
             for lang in ("FR", "MO"):
                 available[lang] = [
