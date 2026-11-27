@@ -405,8 +405,8 @@ def main() -> int:
     try:
         cfg = load_config()
     except ConfigError as exc:
-        print(f"[preflight] {exc}")
-        return 0
+        print(f"[preflight][error] {exc}", file=sys.stderr)
+        return 2
 
     now = datetime.now(APP_TIMEZONE)
     reference_day = date.fromisoformat(args.reference_date) if args.reference_date else now.date()
@@ -474,8 +474,8 @@ def main() -> int:
 
     missing = whatsapp_config_missing(cfg)
     if missing:
-        print("[preflight] Configuration WhatsApp incomplète: " + ", ".join(missing))
-        return 0
+        print("[preflight][error] Configuration WhatsApp incomplète: " + ", ".join(missing), file=sys.stderr)
+        return 2
     if not cfg["enabled"]:
         print("[preflight] WHATSAPP_AUTOMATION_ENABLED n'est pas activé; aucun message envoyé.")
         return 0
